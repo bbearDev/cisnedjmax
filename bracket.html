@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>디맥테마 전쟁 — 대진표</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css" />
+<style>
+  /* 배경 이미지는 여기 한 곳에서만 바꾸면 됩니다 */
+  :root { --bg: url('https://raw.githubusercontent.com/bbearDev/cisnedjmax/main/4bracket.png'); }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  /* 창 비율이 16:9가 아닐 때 남는 여백을 같은 이미지를 흐리게 깔아 채웁니다 */
+  body::before {
+    content: ''; position: fixed; inset: -60px;
+    background: var(--bg) center / cover no-repeat;
+    filter: blur(30px) brightness(0.85);
+  }
+  .stage {
+    position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;
+    background: var(--bg) no-repeat 0 0 / 1920px 1080px;
+    transform-origin: 0 0;
+    font-family: 'Pretendard Variable', Pretendard, 'Noto Sans CJK KR', sans-serif;
+  }
+  /* 이미지의 흰 칸 위에 정확히 겹치는 이름 칸 */
+  .slot {
+    position: absolute; box-sizing: border-box; padding: 0 14px;
+    display: flex; align-items: center; justify-content: center;
+    white-space: nowrap; overflow: hidden;
+    font-weight: 800; color: #4a1458; letter-spacing: -0.01em;
+  }
+  .slot.small { font-size: 30px; }
+  .slot.big { font-size: 36px; }
+</style>
+</head>
+<body>
+<div class="stage" id="stage"></div>
+<script>
+  // ── 대진표 내용 ─────────────────────────────────────────────
+  // 아래 배열을 고치거나, URL 파라미터로 덮어쓸 수 있습니다 (쉼표로 구분).
+  //   bracket.html?r1=A,B,C,D,E,F&r2=A,D,E&r3=A,E&r4=A
+  // 빈 칸은 '' 로 두면 됩니다.
+  var BRACKET = {
+    r1: ['', '', '', '', '', ''], // 맨 아래 6칸 (왼쪽부터)
+    r2: ['', '', ''],             // 그 위 작은 3칸
+    r3: ['', ''],                 // 그 위 2칸
+    r4: ['']                      // 맨 위 (우승)
+  };
+
+  // 4bracket.png 흰 칸의 측정 좌표 [left, top, width, height]
+  var SLOTS = {
+    r1: [[120, 788, 257, 92], [392, 788, 257, 92], [695, 788, 257, 92],
+         [973, 788, 257, 92], [1276, 788, 257, 92], [1548, 788, 257, 92]],
+    r2: [[290, 690, 204, 74], [857, 698, 204, 74], [1437, 691, 204, 74]],
+    r3: [[521, 579, 257, 92], [1123, 579, 257, 92]],
+    r4: [[825, 466, 257, 92]]
+  };
+
+  var stage = document.getElementById('stage');
+  var params = new URLSearchParams(location.search);
+
+  Object.keys(SLOTS).forEach(function (round) {
+    var names = params.has(round) ? params.get(round).split(',') : BRACKET[round];
+    SLOTS[round].forEach(function (r, i) {
+      var el = document.createElement('div');
+      el.className = 'slot ' + (round === 'r2' ? 'small' : 'big');
+      el.style.left = r[0] + 'px'; el.style.top = r[1] + 'px';
+      el.style.width = r[2] + 'px'; el.style.height = r[3] + 'px';
+      el.textContent = (names[i] || '').trim();
+      stage.appendChild(el);
+      shrinkToFit(el);
+    });
+  });
+
+  // 긴 이름은 칸을 넘지 않도록 글자 크기를 줄입니다
+  function shrinkToFit(el) {
+    var size = parseFloat(getComputedStyle(el).fontSize);
+    while (el.scrollWidth > el.clientWidth && size > 14) {
+      size -= 1;
+      el.style.fontSize = size + 'px';
+    }
+  }
+
+  // 1920×1080 무대를 잘리지 않게 창에 맞추고 가운데 정렬합니다 (남는 곳은 body::before가 채움)
+  function fit() {
+    var s = Math.min(innerWidth / 1920, innerHeight / 1080);
+    stage.style.transform = 'translate(' + (innerWidth - 1920 * s) / 2 + 'px,' +
+      (innerHeight - 1080 * s) / 2 + 'px) scale(' + s + ')';
+  }
+  addEventListener('resize', fit);
+  fit();
+  // 웹폰트가 늦게 로드되면 폭이 바뀌므로 한 번 더 맞춥니다
+  if (document.fonts) document.fonts.ready.then(function () {
+    document.querySelectorAll('.slot').forEach(function (el) { el.style.fontSize = ''; shrinkToFit(el); });
+  });
+</script>
+</body>
+</html>

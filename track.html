@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>디맥테마 전쟁 — 트랙리스트</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css" />
+<style>
+  /* 배경 이미지는 여기 한 곳에서만 바꾸면 됩니다 */
+  :root { --bg: url('https://raw.githubusercontent.com/bbearDev/cisnedjmax/main/5track.png'); }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  /* 창 비율이 16:9가 아닐 때 남는 여백을 같은 이미지를 흐리게 깔아 채웁니다 */
+  body::before {
+    content: ''; position: fixed; inset: -60px;
+    background: var(--bg) center / cover no-repeat;
+    filter: blur(30px) brightness(0.85);
+  }
+  .stage {
+    position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;
+    background: var(--bg) no-repeat 0 0 / 1920px 1080px;
+    transform-origin: 0 0;
+    font-family: 'Pretendard Variable', Pretendard, 'Noto Sans CJK KR', sans-serif;
+    color: #4a1458;
+  }
+  .abs { position: absolute; box-sizing: border-box; }
+
+  /* VS 양옆 선수 이름 */
+  .player {
+    top: 365px; height: 80px; width: 340px;
+    display: flex; align-items: center;
+    white-space: nowrap; overflow: hidden;
+    font-size: 52px; font-weight: 900; letter-spacing: -0.01em;
+    color: #fff; text-shadow: 0 3px 0 #5a1a6e, 0 0 12px rgba(90, 26, 110, 0.6);
+  }
+  .player.left { left: 1000px; justify-content: flex-end; }
+  .player.right { left: 1475px; justify-content: flex-start; }
+
+  /* 곡 카드 위쪽(보라 정사각형): 자켓 이미지, 없으면 라벨 */
+  .jacket {
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+    font-size: 24px; font-weight: 900; color: #fff; text-align: center; line-height: 1.15;
+    text-shadow: 0 2px 0 rgba(74, 20, 88, 0.6);
+  }
+  .jacket img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* 곡 카드 아래쪽(흰 칸): 곡 제목 + 난이도 */
+  .info {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px; padding: 8px 10px; text-align: center; overflow: hidden;
+  }
+  .title { font-size: 22px; font-weight: 800; line-height: 1.2; word-break: keep-all; overflow-wrap: anywhere; }
+  .diff { font-size: 17px; font-weight: 700; color: #9a5bb5; }
+  .label-tag { font-size: 15px; font-weight: 800; color: #9a5bb5; letter-spacing: 0.05em; }
+</style>
+</head>
+<body>
+<div class="stage" id="stage"></div>
+<script>
+  // ── 트랙리스트 내용 ─────────────────────────────────────────
+  // 아래 값을 고치거나, URL 파라미터로 덮어쓸 수 있습니다.
+  //   track.html?p1=선수A&p2=선수B&t1=곡제목&d1=SC 15&j1=자켓URL&l1=1P 선곡 ...
+  //   (1~3번 곡: t=제목, d=난이도, j=자켓 이미지 URL, l=라벨)
+  var PLAYERS = ['', ''];
+  var SONGS = [
+    { label: '1P 선곡', title: '', diff: '', jacket: '' },
+    { label: 'RANDOM',  title: '', diff: '', jacket: '' },
+    { label: '2P 선곡', title: '', diff: '', jacket: '' }
+  ];
+
+  // 5track.png 카드의 측정 좌표: 보라 칸 top 543~706, 흰 칸 706~858
+  var CARD_X = [1094, 1333, 1582], CARD_W = 163;
+  var JACKET = { top: 543, height: 163 }, INFO = { top: 706, height: 152 };
+
+  var stage = document.getElementById('stage');
+  var q = new URLSearchParams(location.search);
+  function pick(key, fallback) { return q.has(key) ? q.get(key) : fallback; }
+  function box(cls, left, top, width, height) {
+    var el = document.createElement('div');
+    el.className = 'abs ' + cls;
+    el.style.left = left + 'px'; el.style.top = top + 'px';
+    if (width) el.style.width = width + 'px';
+    if (height) el.style.height = height + 'px';
+    stage.appendChild(el);
+    return el;
+  }
+
+  ['left', 'right'].forEach(function (side, i) {
+    var el = box('player ' + side);
+    el.textContent = pick('p' + (i + 1), PLAYERS[i]);
+  });
+
+  SONGS.forEach(function (song, i) {
+    var n = i + 1, x = CARD_X[i];
+    var label = pick('l' + n, song.label), title = pick('t' + n, song.title);
+    var diff = pick('d' + n, song.diff), jacketUrl = pick('j' + n, song.jacket);
+
+    var jacket = box('jacket', x, JACKET.top, CARD_W, JACKET.height);
+    if (jacketUrl) {
+      var img = document.createElement('img');
+      img.src = jacketUrl; img.alt = '';
+      jacket.appendChild(img);
+    } else {
+      jacket.textContent = label;
+    }
+
+    var info = box('info', x, INFO.top, CARD_W, INFO.height);
+    // 자켓이 있으면 라벨은 흰 칸 위쪽에 작게 표시
+    if (jacketUrl && label) add(info, 'label-tag', label);
+    add(info, 'title', title);
+    if (diff) add(info, 'diff', diff);
+  });
+
+  function add(parent, cls, text) {
+    var el = document.createElement('div');
+    el.className = cls; el.textContent = text;
+    parent.appendChild(el);
+    return el;
+  }
+
+  // 넘치는 글자는 칸에 들어갈 때까지 줄입니다
+  function shrink(el, min) {
+    var size = parseFloat(getComputedStyle(el).fontSize);
+    while ((el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight) && size > min) {
+      size -= 1; el.style.fontSize = size + 'px';
+    }
+  }
+  function shrinkInfo(info) {
+    var title = info.querySelector('.title');
+    var size = 22;
+    title.style.fontSize = '';
+    while (info.scrollHeight > info.clientHeight && size > 12) {
+      size -= 1; title.style.fontSize = size + 'px';
+    }
+  }
+  function shrinkAll() {
+    document.querySelectorAll('.player').forEach(function (el) { el.style.fontSize = ''; shrink(el, 20); });
+    document.querySelectorAll('.info').forEach(shrinkInfo);
+  }
+  shrinkAll();
+  if (document.fonts) document.fonts.ready.then(shrinkAll);
+
+  // 1920×1080 무대를 잘리지 않게 창에 맞추고 가운데 정렬합니다 (남는 곳은 body::before가 채움)
+  function fit() {
+    var s = Math.min(innerWidth / 1920, innerHeight / 1080);
+    stage.style.transform = 'translate(' + (innerWidth - 1920 * s) / 2 + 'px,' +
+      (innerHeight - 1080 * s) / 2 + 'px) scale(' + s + ')';
+  }
+  addEventListener('resize', fit);
+  fit();
+</script>
+</body>
+</html>
