@@ -6,6 +6,12 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css" />
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  /* 창 비율이 16:9가 아닐 때 남는 여백을 같은 이미지를 흐리게 깔아 채웁니다 (--bg는 스크립트가 설정) */
+  body::before {
+    content: ''; position: fixed; inset: -60px;
+    background: var(--bg) center / cover no-repeat;
+    filter: blur(30px) brightness(0.85);
+  }
   .stage {
     position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;
     transform-origin: 0 0; overflow: hidden;
@@ -24,9 +30,14 @@
 <script>
   var stage = document.getElementById('stage');
   var img = new URLSearchParams(location.search).get('img');
-  if (img) document.getElementById('bg').src = img;
+  var bg = document.getElementById('bg');
+  if (img) bg.src = img;
+  document.documentElement.style.setProperty('--bg', 'url("' + bg.src + '")');
+  // 1920×1080 무대를 잘리지 않게 창에 맞추고 가운데 정렬합니다 (남는 곳은 body::before가 채움)
   function fit() {
-    stage.style.transform = 'scale(' + Math.min(innerWidth / 1920, innerHeight / 1080) + ')';
+    var s = Math.min(innerWidth / 1920, innerHeight / 1080);
+    stage.style.transform = 'translate(' + (innerWidth - 1920 * s) / 2 + 'px,' +
+      (innerHeight - 1080 * s) / 2 + 'px) scale(' + s + ')';
   }
   addEventListener('resize', fit);
   fit();
