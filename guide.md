@@ -1,0 +1,1 @@
+모든 위젯의 기능은 https://sync.havana.moe/widget-guide 참고하여 작성할 것.
