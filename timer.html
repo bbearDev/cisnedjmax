@@ -53,42 +53,17 @@
     return new Date(s).getTime();
   }
   var target = parseTarget(new URLSearchParams(location.search).get('to') || TARGET);
-
-  // Sync 위젯 데이터 (https://sync.havana.moe/widget-guide)
-  // 디렉터가 타이머를 설정하면 그 값을, 아니면 TARGET 카운트다운을 씁니다.
-  var timer = null;
-  function onData(d) { timer = d && d.timer; }
-  if (window.RT) {
-    RT.onData(onData);
-  } else {
-    addEventListener('message', function (e) {
-      var msg = e.data;
-      if (e.source !== parent || !msg || msg.source !== 'rhythm-tourney' || msg.type !== 'data') return;
-      onData(msg.data);
-    });
-    if (parent !== window) parent.postMessage({ source: 'rhythm-tourney-widget', type: 'ready' }, '*');
-  }
-
-  function remainingMs() {
+  function tick() {
+    if (isNaN(target)) { clock.textContent = '--:--'; return; }
     var now = Date.now();
-    if (timer && timer.present) {
-      if (!timer.running) return timer.displayMs;
-      return timer.mode === 'down' ? Math.max(0, timer.anchorMs - now) : Math.max(0, now - timer.anchorMs);
-    }
-    return isNaN(target) ? NaN : Math.max(0, target - now);
-  }
-  function render() {
-    var ms = remainingMs();
-    if (isNaN(ms)) { clock.textContent = '--:--'; return; }
-    var up = timer && timer.present && timer.mode === 'up';
-    var s = up ? Math.floor(ms / 1000) : Math.ceil(ms / 1000);
+    var s = Math.max(0, Math.ceil((target - now) / 1000));
     var h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = s % 60;
     clock.textContent = (h > 0 ? h + ':' + pad(m) : pad(m)) + ':' + pad(sec);
+    if (s > 0) setTimeout(tick, (target - now) % 1000 || 1000);
   }
   addEventListener('resize', fit);
   fit();
-  render();
-  setInterval(render, 200);
+  tick();
 </script>
 </body>
 </html>
