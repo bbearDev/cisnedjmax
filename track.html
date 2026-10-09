@@ -48,6 +48,7 @@
   }
   .title { font-size: 22px; font-weight: 800; line-height: 1.2; word-break: keep-all; overflow-wrap: anywhere; }
   .diff { font-size: 17px; font-weight: 700; color: #9a5bb5; }
+  .now { border: 5px solid #fff; border-radius: 6px; box-shadow: 0 0 24px 4px rgba(255, 255, 255, 0.85); }
   .label-tag { font-size: 15px; font-weight: 800; color: #9a5bb5; letter-spacing: 0.05em; }
 </style>
 </head>
@@ -55,7 +56,8 @@
 <div class="stage" id="stage"></div>
 <script>
   // ── 트랙리스트 내용 ─────────────────────────────────────────
-  // 아래 값을 고치거나, URL 파라미터로 덮어쓸 수 있습니다.
+  // Sync 위젯으로 쓰면 매치 데이터(선수 이름, 공개된 선곡)를 받아 자동으로 채웁니다.
+  // 데이터가 없을 때(OBS 단독)는 아래 값이나 URL 파라미터를 씁니다.
   //   track.html?p1=선수A&p2=선수B&t1=곡제목&d1=SC 15&j1=자켓URL&l1=1P 선곡 ...
   //   (1~3번 곡: t=제목, d=난이도, j=자켓 이미지 URL, l=라벨)
   var PLAYERS = ['', ''];
@@ -70,49 +72,91 @@
   var JACKET = { top: 543, height: 163 }, INFO = { top: 706, height: 152 };
 
   var stage = document.getElementById('stage');
+  var layer = document.createElement('div');
+  stage.appendChild(layer);
   var q = new URLSearchParams(location.search);
   function pick(key, fallback) { return q.has(key) ? q.get(key) : fallback; }
   function box(cls, left, top, width, height) {
     var el = document.createElement('div');
     el.className = 'abs ' + cls;
-    el.style.left = left + 'px'; el.style.top = top + 'px';
+    if (left != null) { el.style.left = left + 'px'; el.style.top = top + 'px'; }
     if (width) el.style.width = width + 'px';
     if (height) el.style.height = height + 'px';
-    stage.appendChild(el);
+    layer.appendChild(el);
     return el;
   }
-
-  ['left', 'right'].forEach(function (side, i) {
-    var el = box('player ' + side);
-    el.textContent = pick('p' + (i + 1), PLAYERS[i]);
-  });
-
-  SONGS.forEach(function (song, i) {
-    var n = i + 1, x = CARD_X[i];
-    var label = pick('l' + n, song.label), title = pick('t' + n, song.title);
-    var diff = pick('d' + n, song.diff), jacketUrl = pick('j' + n, song.jacket);
-
-    var jacket = box('jacket', x, JACKET.top, CARD_W, JACKET.height);
-    if (jacketUrl) {
-      var img = document.createElement('img');
-      img.src = jacketUrl; img.alt = '';
-      jacket.appendChild(img);
-    } else {
-      jacket.textContent = label;
-    }
-
-    var info = box('info', x, INFO.top, CARD_W, INFO.height);
-    // 자켓이 있으면 라벨은 흰 칸 위쪽에 작게 표시
-    if (jacketUrl && label) add(info, 'label-tag', label);
-    add(info, 'title', title);
-    if (diff) add(info, 'diff', diff);
-  });
-
   function add(parent, cls, text) {
     var el = document.createElement('div');
     el.className = cls; el.textContent = text;
     parent.appendChild(el);
     return el;
+  }
+
+  function render(players, songs) {
+    layer.textContent = '';
+    ['left', 'right'].forEach(function (side, i) {
+      box('player ' + side).textContent = players[i] || '';
+    });
+    songs.forEach(function (song, i) {
+      var x = CARD_X[i];
+      if (song.current) box('now', x - 8, JACKET.top - 8, CARD_W + 16, JACKET.height + INFO.height + 16);
+      var jacket = box('jacket', x, JACKET.top, CARD_W, JACKET.height);
+      if (song.jacket) {
+        var img = document.createElement('img');
+        img.src = song.jacket; img.alt = '';
+        jacket.appendChild(img);
+      } else {
+        jacket.textContent = song.label;
+      }
+      var info = box('info', x, INFO.top, CARD_W, INFO.height);
+      if (song.jacket && song.label) add(info, 'label-tag', song.label);
+      add(info, 'title', song.title);
+      if (song.diff) add(info, 'diff', song.diff);
+    });
+    shrinkAll();
+  }
+
+  function manualSongs() {
+    return SONGS.map(function (song, i) {
+      var n = i + 1;
+      return { label: pick('l' + n, song.label), title: pick('t' + n, song.title),
+               diff: pick('d' + n, song.diff), jacket: pick('j' + n, song.jacket) };
+    });
+  }
+
+  // Sync WidgetData → 화면 (https://sync.havana.moe/widget-guide)
+  // 블라인드 곡은 데이터에 오지 않으므로 공개된 픽만 순서대로 채워집니다.
+  function onData(d) {
+    if (!d || !d.match) return;
+    var players = d.match.players.map(function (p) { return p.name; });
+    var picks = d.picks.filter(function (p) { return p.kind === 'pick'; })
+      .sort(function (a, b) { return a.order - b.order; });
+    var songs = SONGS.map(function (fallback, i) {
+      var p = picks[i];
+      if (!p) return { label: fallback.label, title: '', diff: '', jacket: '' };
+      var label = typeof p.side === 'number' ? (p.side + 1) + 'P 선곡'
+        : p.side === 'random' ? 'RANDOM' : '지정곡';
+      return {
+        label: label,
+        title: p.song.title,
+        diff: [p.song.difficulty, p.song.level].filter(Boolean).join(' '),
+        jacket: p.song.jacketUrl || '',
+        current: !!(d.current && d.current.order === p.order)
+      };
+    });
+    render(players, songs);
+  }
+
+  render([pick('p1', PLAYERS[0]), pick('p2', PLAYERS[1])], manualSongs());
+  if (window.RT) {
+    RT.onData(onData);
+  } else {
+    addEventListener('message', function (e) {
+      var msg = e.data;
+      if (e.source !== parent || !msg || msg.source !== 'rhythm-tourney' || msg.type !== 'data') return;
+      onData(msg.data);
+    });
+    if (parent !== window) parent.postMessage({ source: 'rhythm-tourney-widget', type: 'ready' }, '*');
   }
 
   // 넘치는 글자는 칸에 들어갈 때까지 줄입니다
@@ -134,7 +178,6 @@
     document.querySelectorAll('.player').forEach(function (el) { el.style.fontSize = ''; shrink(el, 20); });
     document.querySelectorAll('.info').forEach(shrinkInfo);
   }
-  shrinkAll();
   if (document.fonts) document.fonts.ready.then(shrinkAll);
 
   // 1920×1080 무대를 잘리지 않게 창에 맞추고 가운데 정렬합니다 (남는 곳은 body::before가 채움)
