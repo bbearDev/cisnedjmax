@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>게임설명</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css" />
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  body::before {
+    content: ''; position: fixed; inset: -60px;
+    background: var(--bg) center / cover no-repeat;
+    filter: blur(30px) brightness(0.85);
+  }
+  .stage {
+    position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;
+    transform-origin: 0 0; overflow: hidden;
+    font-family: 'Pretendard Variable', Pretendard, 'Noto Sans CJK KR', sans-serif;
+  }
+  .bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .layer { position: absolute; inset: 0; }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <!-- backgound IMG -->
+  <img class="bg" id="bg" src="https://raw.githubusercontent.com/bbearDev/cisnedjmax/main/2rule.png" alt="" />
+  <div class="layer">
+    <!-- 예: <div style="position:absolute; left:453px; top:802px; width:995px; height:231px;">텍스트</div> -->
+  </div>
+</div>
+<script>
+  var stage = document.getElementById('stage');
+  var img = new URLSearchParams(location.search).get('img');
+  var bg = document.getElementById('bg');
+  if (img) bg.src = img;
+  document.documentElement.style.setProperty('--bg', 'url("' + bg.src + '")');
+  function fit() {
+    var s = Math.min(innerWidth / 1920, innerHeight / 1080);
+    stage.style.transform = 'translate(' + (innerWidth - 1920 * s) / 2 + 'px,' +
+      (innerHeight - 1080 * s) / 2 + 'px) scale(' + s + ')';
+  }
+  addEventListener('resize', fit);
+  fit();
+</script>
+</body>
+</html>
