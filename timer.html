@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>디맥테마 전쟁 — 준비화면 </title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css" />
+<style>
+  /* 배경 이미지는 여기 한 곳에서만 바꾸면 됩니다 */
+  :root { --bg: url('https://media.discordapp.net/attachments/1556480465609949234/1556503186993324102/1.png?backend=b2&ex=6ac4660e&is=6ac3148e&hm=d4a304fadea968fd4d2813d795e37566eaf49381d2b62b86e223d273d321d1d5&=&format=webp&quality=lossless'); }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  /* 창 비율이 16:9가 아닐 때 남는 여백을 같은 이미지를 흐리게 깔아 채웁니다 */
+  body::before {
+    content: ''; position: fixed; inset: -60px;
+    background: var(--bg) center / cover no-repeat;
+    filter: blur(30px) brightness(0.85);
+  }
+  .stage {
+    position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;
+    background: var(--bg) no-repeat 0 0 / 1920px 1080px;
+    transform-origin: 0 0;
+  }
+  .clock {
+    position: absolute; left: 453px; top: 802px; width: 995px; height: 231px;
+    box-sizing: border-box; padding-left: 150px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Pretendard Variable', Pretendard, 'Noto Sans CJK KR', sans-serif;
+    font-size: 150px; font-weight: 900; letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+    color: #5a1a6e;
+    text-shadow: 0 4px 0 rgba(255, 255, 255, 0.9);
+  }
+</style>
+</head>
+<body>
+<div class="stage" id="stage"><div class="clock" id="clock">--:--:--</div></div>
+<script>
+  var TARGET = '21:00';
+
+  var stage = document.getElementById('stage');
+  var clock = document.getElementById('clock');
+  // 1920×1080 무대를 잘리지 않게 창에 맞추고 가운데 정렬합니다 (남는 곳은 body::before가 채움)
+  function fit() {
+    var s = Math.min(innerWidth / 1920, innerHeight / 1080);
+    stage.style.transform = 'translate(' + (innerWidth - 1920 * s) / 2 + 'px,' +
+      (innerHeight - 1080 * s) / 2 + 'px) scale(' + s + ')';
+  }
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function parseTarget(s) {
+    var m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(s);
+    if (m) {
+      var d = new Date();
+      d.setHours(+m[1], +m[2], +(m[3] || 0), 0);
+      return d.getTime();
+    }
+    return new Date(s).getTime();
+  }
+  var target = parseTarget(new URLSearchParams(location.search).get('to') || TARGET);
+  function tick() {
+    if (isNaN(target)) { clock.textContent = '--:--'; return; }
+    var now = Date.now();
+    var s = Math.max(0, Math.ceil((target - now) / 1000));
+    var h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = s % 60;
+    clock.textContent = (h > 0 ? h + ':' + pad(m) : pad(m)) + ':' + pad(sec);
+    if (s > 0) setTimeout(tick, (target - now) % 1000 || 1000);
+  }
+  addEventListener('resize', fit);
+  fit();
+  tick();
+</script>
+</body>
+</html>

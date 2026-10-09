@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>게임설명</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css" />
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  .stage {
+    position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;
+    transform-origin: 0 0; overflow: hidden;
+    font-family: 'Pretendard Variable', Pretendard, 'Noto Sans CJK KR', sans-serif;
+  }
+  .bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .layer { position: absolute; inset: 0; }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <img class="bg" id="bg" src="https://media.discordapp.net/attachments/1556480465609949234/1556509978993631303/26d483430437936b.png?backend=b2&ex=6ac46c61&is=6ac31ae1&hm=c9ee534d4183958ea86a40ede1a097579e3d6d36a9c34b45b9a685ce20b0bb3f&=&format=webp&quality=lossless" alt="" />
+  <div class="layer">
+  </div>
+</div>
+<script>
+  var stage = document.getElementById('stage');
+  var img = new URLSearchParams(location.search).get('img');
+  if (img) document.getElementById('bg').src = img;
+  function fit() {
+    stage.style.transform = 'scale(' + Math.min(innerWidth / 1920, innerHeight / 1080) + ')';
+  }
+  addEventListener('resize', fit);
+  fit();
+</script>
+</body>
+</html>
