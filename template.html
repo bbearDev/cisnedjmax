@@ -6,27 +6,23 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css" />
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
-  /* 창 비율이 16:9가 아닐 때 남는 여백을 같은 이미지를 흐리게 깔아 채웁니다 (--bg는 스크립트가 설정) */
   body::before {
     content: ''; position: fixed; inset: -60px;
     background: var(--bg) center / cover no-repeat;
     filter: blur(30px) brightness(0.85);
   }
-  /* 1920×1080 무대. 창 크기에 맞춰 비율 유지한 채 축소/확대됩니다 */
   .stage {
     position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;
     transform-origin: 0 0; overflow: hidden;
     font-family: 'Pretendard Variable', Pretendard, 'Noto Sans CJK KR', sans-serif;
   }
-  /* 배경 이미지: 1920×1080을 꽉 채움 (비율이 다르면 가운데 기준으로 잘림) */
   .bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-  /* 위에 얹는 요소는 .layer 안에 FHD 픽셀 좌표로 배치합니다 */
   .layer { position: absolute; inset: 0; }
 </style>
 </head>
 <body>
 <div class="stage" id="stage">
-  <!-- 이미지 경로: 아래 src를 바꾸거나 URL에 ?img=파일명.png 를 붙이세요 -->
+  <!-- backgound IMG -->
   <img class="bg" id="bg" src="https://raw.githubusercontent.com/bbearDev/cisnedjmax/main/1standby.png" alt="" />
   <div class="layer">
     <!-- 예: <div style="position:absolute; left:453px; top:802px; width:995px; height:231px;">텍스트</div> -->
@@ -38,7 +34,6 @@
   var bg = document.getElementById('bg');
   if (img) bg.src = img;
   document.documentElement.style.setProperty('--bg', 'url("' + bg.src + '")');
-  // 1920×1080 무대를 잘리지 않게 창에 맞추고 가운데 정렬합니다 (남는 곳은 body::before가 채움)
   function fit() {
     var s = Math.min(innerWidth / 1920, innerHeight / 1080);
     stage.style.transform = 'translate(' + (innerWidth - 1920 * s) / 2 + 'px,' +
