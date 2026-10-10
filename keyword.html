@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>디맥테마 전쟁 — 키워드선택</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css" />
 <style>
@@ -19,7 +20,7 @@
     transform-origin: 0 0;
   }
   .kw {
-    position: absolute; white-space: nowrap; cursor: pointer; user-select: none;
+    position: absolute; white-space: nowrap; user-select: none;
     padding: 6px 22px; border-radius: 999px;
     background: rgba(255, 255, 255, 0.88); border: 3px solid #7b3a96;
     font-weight: 900; color: #4a1458; letter-spacing: -0.01em; line-height: 1.25;
@@ -33,54 +34,74 @@
   }
   .kw.off { opacity: var(--off-opacity); }
   .kw.off::after { transform: scaleX(1); }
+  .local .kw { cursor: pointer; }
 
   /* 조작판 (?control) */
-  body.control { background: #1e1b24; color: #eee; font-size: 14px; overflow: auto; }
-  .panel { padding: 10px; }
-  .bar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
-  .bar input { width: 70px; background: #2b2733; color: #eee; border: 1px solid #555; border-radius: 4px; padding: 4px; }
-  .bar button, .list button {
+  body.control { background: #1e1b24; color: #eee; font-size: 15px; overflow: auto; }
+  .panel { padding: 12px; max-width: 900px; margin: 0 auto; }
+  .bar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .panel button {
     background: #3b3347; color: #eee; border: 1px solid #6b5a80; border-radius: 6px;
-    padding: 6px 10px; font: inherit; cursor: pointer;
+    padding: 8px 12px; font: inherit; cursor: pointer;
   }
-  .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; }
+  .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
   .list button { font-weight: 700; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .list button.off { text-decoration: line-through; text-decoration-color: #ff5c93; text-decoration-thickness: 2px; opacity: 0.5; }
-  .status { font-size: 12px; color: #aaa; }
+  .status { font-size: 13px; color: #aaa; margin-left: auto; }
   .status.ok { color: #7ee08a; }
+  .status.err { color: #ff6b6b; }
+  details { margin-top: 16px; }
+  textarea { width: 100%; height: 220px; box-sizing: border-box; margin: 8px 0; background: #2b2733; color: #eee;
+             border: 1px solid #555; border-radius: 6px; padding: 8px; font: inherit; }
 </style>
 </head>
 <body>
 <script>
+  // Firebase Realtime Database 주소와 방 이름 (keyword-guide.md 참고)
+  var DB_URL = '';
+  var ROOM = 'main';
+  // DB에 키워드가 없을 때 쓰는 기본값
   var KEYWORDS = [
     '키워드1', '키워드2', '키워드3', '키워드4', '키워드5',
     '키워드6', '키워드7', '키워드8', '키워드9', '키워드10',
     '키워드11', '키워드12', '키워드13', '키워드14', '키워드15'
   ];
-  var SEED = 1;
   var OFF_OPACITY = 0.35;
   // 6keyword.png 안쪽 패널에서 '키워드선택' 간판 아래 영역 [left, top, right, bottom]
   var AREA = [1005, 290, 1820, 905];
 
   var q = new URLSearchParams(location.search);
-  if (q.get('words')) KEYWORDS = q.get('words').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
-  var STORE = 'keyword-state:' + KEYWORDS.join('|');
-  var state = load() || { seed: +(q.get('seed') || SEED), off: [] };
+  DB_URL = (q.get('db') || DB_URL).replace(/\/$/, '');
+  ROOM = q.get('room') || ROOM;
+  var STATE_URL = DB_URL + '/keyword/' + encodeURIComponent(ROOM);
+  var state = { words: KEYWORDS.slice(), seed: 1, off: [] };
 
-  function load() {
-    try { return JSON.parse(localStorage.getItem(STORE)); } catch (e) { return null; }
+  // Firebase는 빈 배열을 지우고 배열을 객체로 돌려줄 수 있어 정리합니다
+  function normalize(s) {
+    function list(v) { return v ? Object.keys(v).map(function (k) { return v[k]; }) : []; }
+    if (!s) return null;
+    var words = list(s.words);
+    return { words: words.length ? words : KEYWORDS.slice(), seed: s.seed || 1, off: list(s.off) };
   }
-  function save() {
-    try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {}
+  function toggle(word) {
+    var at = state.off.indexOf(word);
+    if (at >= 0) state.off.splice(at, 1); else state.off.push(word);
   }
-  var channel = window.BroadcastChannel ? new BroadcastChannel('keyword') : null;
-  function share() {
-    save();
-    if (channel) channel.postMessage(state);
-  }
-  function toggle(i) {
-    var at = state.off.indexOf(i);
-    if (at >= 0) state.off.splice(at, 1); else state.off.push(i);
+  // DB 변경을 실시간으로 받습니다 (Firebase REST 스트리밍)
+  function subscribe(onState, onStatus) {
+    var es = new EventSource(STATE_URL + '/state.json');
+    es.addEventListener('put', function (e) {
+      var msg = JSON.parse(e.data);
+      if (msg.path === '/') onState(normalize(msg.data));
+      else refetch();
+    });
+    es.addEventListener('patch', refetch);
+    es.onopen = function () { onStatus && onStatus(true); };
+    es.onerror = function () { onStatus && onStatus(false); };
+    function refetch() {
+      fetch(STATE_URL + '/state.json').then(function (r) { return r.json(); })
+        .then(function (d) { onState(normalize(d)); });
+    }
   }
   function mulberry32(a) {
     return function () {
@@ -97,106 +118,93 @@
     document.body.className = 'control';
     document.body.innerHTML =
       '<div class="panel">' +
-      '<div class="bar">' +
-      '<button id="shuffle">섞기</button><button id="reset">초기화</button>' +
-      '<span>port</span><input id="port"><span>pw</span><input id="pw" type="password">' +
-      '<button id="connect">연결</button><span class="status" id="status">OBS 미연결</span>' +
-      '</div><div class="list" id="list"></div></div>';
+      '<div class="bar"><button id="shuffle">섞기</button><button id="reset">초기화</button>' +
+      '<span class="status" id="status">연결 중…</span></div>' +
+      '<div class="list" id="list"></div>' +
+      '<details><summary>키워드 편집</summary>' +
+      '<textarea id="words" placeholder="한 줄에 하나씩"></textarea>' +
+      '<button id="save">키워드 저장</button></details></div>';
 
+    var KEY = q.get('key') || '';
     var list = document.getElementById('list');
     var statusEl = document.getElementById('status');
-    var portEl = document.getElementById('port'), pwEl = document.getElementById('pw');
-    var ws = null;
-    try { portEl.value = q.get('port') || localStorage.getItem('keyword-ws-port') || '4455'; } catch (e) { portEl.value = '4455'; }
-    try { pwEl.value = q.get('pw') || localStorage.getItem('keyword-ws-pw') || ''; } catch (e) {}
+    var wordsEl = document.getElementById('words');
 
+    function setStatus(text, cls) { statusEl.textContent = text; statusEl.className = 'status ' + (cls || ''); }
     function draw() {
       list.textContent = '';
-      KEYWORDS.forEach(function (word, i) {
+      state.words.forEach(function (word) {
         var b = document.createElement('button');
         b.textContent = word; b.title = word;
-        if (state.off.indexOf(i) >= 0) b.className = 'off';
-        b.onclick = function () { toggle(i); send(); };
+        if (state.off.indexOf(word) >= 0) b.className = 'off';
+        b.onclick = function () { toggle(word); send(); };
         list.appendChild(b);
       });
+      if (document.activeElement !== wordsEl) wordsEl.value = state.words.join('\n');
     }
     function send() {
-      share();
       draw();
-      if (ws && ws.readyState === 1) {
-        ws.send(JSON.stringify({ op: 6, d: {
-          requestType: 'CallVendorRequest', requestId: String(Date.now()),
-          requestData: { vendorName: 'obs-browser', requestType: 'emit_event',
-            requestData: { event_name: 'keyword-state', event_data: state } }
-        } }));
-      }
+      fetch(STATE_URL + '.json', { method: 'PUT', body: JSON.stringify({ key: KEY, state: state }) })
+        .then(function (r) {
+          if (r.status === 401) setStatus('저장 실패: key 확인', 'err');
+          else if (!r.ok) setStatus('저장 실패 (' + r.status + ')', 'err');
+          else setStatus('실시간 연결됨', 'ok');
+        })
+        .catch(function () { setStatus('저장 실패: 네트워크', 'err'); });
     }
-    function setStatus(text, ok) { statusEl.textContent = text; statusEl.className = 'status' + (ok ? ' ok' : ''); }
-    async function sha256b64(text) {
-      var buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-      return btoa(String.fromCharCode.apply(null, new Uint8Array(buf)));
-    }
-    function connect() {
-      if (ws) ws.close();
-      try { localStorage.setItem('keyword-ws-port', portEl.value); localStorage.setItem('keyword-ws-pw', pwEl.value); } catch (e) {}
-      setStatus('연결 중…');
-      ws = new WebSocket('ws://127.0.0.1:' + portEl.value);
-      ws.onmessage = async function (e) {
-        var msg = JSON.parse(e.data);
-        if (msg.op === 0) {
-          var hello = { op: 1, d: { rpcVersion: 1 } };
-          var auth = msg.d.authentication;
-          if (auth) hello.d.authentication = await sha256b64(await sha256b64(pwEl.value + auth.salt) + auth.challenge);
-          ws.send(JSON.stringify(hello));
-        } else if (msg.op === 2) {
-          setStatus('OBS 연결됨', true);
-          send();
-        }
-      };
-      ws.onclose = function (e) { setStatus(e.code === 4009 ? '비밀번호 오류' : 'OBS 미연결'); };
-    }
-    document.getElementById('connect').onclick = connect;
-    document.getElementById('shuffle').onclick = function () { state.seed = Math.floor(Math.random() * 1e9); send(); };
+    document.getElementById('shuffle').onclick = function () { state.seed = Math.floor(Math.random() * 1e9) + 1; send(); };
     document.getElementById('reset').onclick = function () { state.off = []; send(); };
-    if (channel) channel.onmessage = function (e) { state = e.data; save(); draw(); };
+    document.getElementById('save').onclick = function () {
+      var words = wordsEl.value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+      if (!words.length) return;
+      state.off = state.off.filter(function (w) { return words.indexOf(w) >= 0; });
+      state.words = words;
+      wordsEl.blur();
+      send();
+    };
+
+    if (!DB_URL) setStatus('DB_URL 미설정', 'err');
+    else if (!KEY) setStatus('주소에 &key= 가 없습니다', 'err');
+    else subscribe(function (s) {
+      if (s) { state = s; draw(); } else send();
+    }, function (ok) { setStatus(ok ? '실시간 연결됨' : '재연결 중…', ok ? 'ok' : 'err'); });
     draw();
-    connect();
   }
 </script>
 
 <script>
   if (!q.has('control')) {
-    document.body.className = 'overlay';
+    document.body.className = 'overlay' + (DB_URL ? '' : ' local');
     document.documentElement.style.setProperty('--off-opacity', OFF_OPACITY);
     var stage = document.createElement('div');
     stage.className = 'stage';
     document.body.appendChild(stage);
-    var words = [], laidSeed = null;
+    var els = {}, laidOut = null;
 
     // 겹치지 않게 무작위 배치하고, 자리가 모자라면 전체 크기를 줄여 다시 배치합니다
     function layout() {
       for (var scale = 1; scale > 0.3; scale *= 0.92) {
         if (tryLayout(scale)) break;
       }
-      laidSeed = state.seed;
+      laidOut = state.seed + '|' + state.words.join('|');
     }
     function tryLayout(scale) {
       stage.textContent = '';
-      words = [];
+      els = {};
       var rand = mulberry32(state.seed);
-      var order = KEYWORDS.map(function (_, i) { return i; });
+      var order = state.words.slice();
       for (var i = order.length - 1; i > 0; i--) {
         var j = Math.floor(rand() * (i + 1)), t = order[i]; order[i] = order[j]; order[j] = t;
       }
       var base = 56 * scale, gap = 10, placed = [];
-      return order.every(function (idx) {
+      return order.every(function (word) {
         var el = document.createElement('div');
         el.className = 'kw';
-        el.textContent = KEYWORDS[idx];
-        el.onclick = function () { toggle(idx); share(); apply(); };
+        el.textContent = word;
+        if (!DB_URL) el.onclick = function () { toggle(word); apply(); };
         el.style.fontSize = Math.round(base * (0.85 + rand() * 0.3)) + 'px';
         stage.appendChild(el);
-        words[idx] = el;
+        els[word] = el;
         var angle = (rand() - 0.5) * 10;
         var w = el.offsetWidth, h = el.offsetHeight;
         for (var n = 0; n < 300; n++) {
@@ -214,19 +222,13 @@
       });
     }
     function apply() {
-      if (laidSeed !== state.seed) layout();
-      words.forEach(function (el, i) { el.classList.toggle('off', state.off.indexOf(i) >= 0); });
+      if (laidOut !== state.seed + '|' + state.words.join('|')) layout();
+      Object.keys(els).forEach(function (w) { els[w].classList.toggle('off', state.off.indexOf(w) >= 0); });
     }
-    function receive(next) {
-      if (!next || !Array.isArray(next.off)) return;
-      state = { seed: next.seed, off: next.off.slice() };
-      save();
-      apply();
-    }
-    // OBS 독 → obs-websocket → obs-browser emit_event
-    addEventListener('keyword-state', function (e) { receive(e.detail); });
-    if (channel) channel.onmessage = function (e) { receive(e.data); };
-    addEventListener('storage', function (e) { if (e.key === STORE) receive(load()); });
+
+    if (DB_URL) subscribe(function (s) { if (s) { state = s; apply(); } });
+    // Sync 외부 URL 위젯 규약 (https://sync.havana.moe/widget-guide)
+    if (parent !== window) parent.postMessage({ source: 'rhythm-tourney-widget', type: 'ready' }, '*');
 
     function fit() {
       var s = Math.min(innerWidth / 1920, innerHeight / 1080);
@@ -236,7 +238,7 @@
     addEventListener('resize', fit);
     fit();
     apply();
-    if (document.fonts) document.fonts.ready.then(function () { laidSeed = null; apply(); });
+    if (document.fonts) document.fonts.ready.then(function () { laidOut = null; apply(); });
   }
 </script>
 </body>
