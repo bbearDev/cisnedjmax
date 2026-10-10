@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>디맥테마 전쟁 — 키워드선택</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css" />
+<style>
+  :root { --bg: url('https://raw.githubusercontent.com/bbearDev/cisnedjmax/main/6keyword.png'); }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  body { font-family: 'Pretendard Variable', Pretendard, 'Noto Sans CJK KR', sans-serif; }
+  body.overlay::before {
+    content: ''; position: fixed; inset: -60px;
+    background: var(--bg) center / cover no-repeat;
+    filter: blur(30px) brightness(0.85);
+  }
+  .stage {
+    position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;
+    background: var(--bg) no-repeat 0 0 / 1920px 1080px;
+    transform-origin: 0 0;
+  }
+  .kw {
+    position: absolute; white-space: nowrap; cursor: pointer; user-select: none;
+    padding: 6px 22px; border-radius: 999px;
+    background: rgba(255, 255, 255, 0.88); border: 3px solid #7b3a96;
+    font-weight: 900; color: #4a1458; letter-spacing: -0.01em; line-height: 1.25;
+    box-shadow: 0 4px 0 rgba(74, 20, 88, 0.35);
+    transition: opacity 0.3s ease 0.35s;
+  }
+  .kw::after {
+    content: ''; position: absolute; left: 10px; right: 10px; top: 50%; height: 6px; margin-top: -3px;
+    background: #d6246e; border-radius: 3px;
+    transform: scaleX(0); transform-origin: left center; transition: transform 0.35s ease;
+  }
+  .kw.off { opacity: var(--off-opacity); }
+  .kw.off::after { transform: scaleX(1); }
+
+  /* 조작판 (?control) */
+  body.control { background: #1e1b24; color: #eee; font-size: 14px; overflow: auto; }
+  .panel { padding: 10px; }
+  .bar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .bar input { width: 70px; background: #2b2733; color: #eee; border: 1px solid #555; border-radius: 4px; padding: 4px; }
+  .bar button, .list button {
+    background: #3b3347; color: #eee; border: 1px solid #6b5a80; border-radius: 6px;
+    padding: 6px 10px; font: inherit; cursor: pointer;
+  }
+  .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; }
+  .list button { font-weight: 700; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .list button.off { text-decoration: line-through; text-decoration-color: #ff5c93; text-decoration-thickness: 2px; opacity: 0.5; }
+  .status { font-size: 12px; color: #aaa; }
+  .status.ok { color: #7ee08a; }
+</style>
+</head>
+<body>
+<script>
+  var KEYWORDS = [
+    '키워드1', '키워드2', '키워드3', '키워드4', '키워드5',
+    '키워드6', '키워드7', '키워드8', '키워드9', '키워드10',
+    '키워드11', '키워드12', '키워드13', '키워드14', '키워드15'
+  ];
+  var SEED = 1;
+  var OFF_OPACITY = 0.35;
+  // 6keyword.png 안쪽 패널에서 '키워드선택' 간판 아래 영역 [left, top, right, bottom]
+  var AREA = [1005, 290, 1820, 905];
+
+  var q = new URLSearchParams(location.search);
+  if (q.get('words')) KEYWORDS = q.get('words').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+  var STORE = 'keyword-state:' + KEYWORDS.join('|');
+  var state = load() || { seed: +(q.get('seed') || SEED), off: [] };
+
+  function load() {
+    try { return JSON.parse(localStorage.getItem(STORE)); } catch (e) { return null; }
+  }
+  function save() {
+    try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {}
+  }
+  var channel = window.BroadcastChannel ? new BroadcastChannel('keyword') : null;
+  function share() {
+    save();
+    if (channel) channel.postMessage(state);
+  }
+  function toggle(i) {
+    var at = state.off.indexOf(i);
+    if (at >= 0) state.off.splice(at, 1); else state.off.push(i);
+  }
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      var t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+</script>
+
+<script>
+  if (q.has('control')) {
+    document.body.className = 'control';
+    document.body.innerHTML =
+      '<div class="panel">' +
+      '<div class="bar">' +
+      '<button id="shuffle">섞기</button><button id="reset">초기화</button>' +
+      '<span>port</span><input id="port"><span>pw</span><input id="pw" type="password">' +
+      '<button id="connect">연결</button><span class="status" id="status">OBS 미연결</span>' +
+      '</div><div class="list" id="list"></div></div>';
+
+    var list = document.getElementById('list');
+    var statusEl = document.getElementById('status');
+    var portEl = document.getElementById('port'), pwEl = document.getElementById('pw');
+    var ws = null;
+    try { portEl.value = q.get('port') || localStorage.getItem('keyword-ws-port') || '4455'; } catch (e) { portEl.value = '4455'; }
+    try { pwEl.value = q.get('pw') || localStorage.getItem('keyword-ws-pw') || ''; } catch (e) {}
+
+    function draw() {
+      list.textContent = '';
+      KEYWORDS.forEach(function (word, i) {
+        var b = document.createElement('button');
+        b.textContent = word; b.title = word;
+        if (state.off.indexOf(i) >= 0) b.className = 'off';
+        b.onclick = function () { toggle(i); send(); };
+        list.appendChild(b);
+      });
+    }
+    function send() {
+      share();
+      draw();
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({ op: 6, d: {
+          requestType: 'CallVendorRequest', requestId: String(Date.now()),
+          requestData: { vendorName: 'obs-browser', requestType: 'emit_event',
+            requestData: { event_name: 'keyword-state', event_data: state } }
+        } }));
+      }
+    }
+    function setStatus(text, ok) { statusEl.textContent = text; statusEl.className = 'status' + (ok ? ' ok' : ''); }
+    async function sha256b64(text) {
+      var buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+      return btoa(String.fromCharCode.apply(null, new Uint8Array(buf)));
+    }
+    function connect() {
+      if (ws) ws.close();
+      try { localStorage.setItem('keyword-ws-port', portEl.value); localStorage.setItem('keyword-ws-pw', pwEl.value); } catch (e) {}
+      setStatus('연결 중…');
+      ws = new WebSocket('ws://127.0.0.1:' + portEl.value);
+      ws.onmessage = async function (e) {
+        var msg = JSON.parse(e.data);
+        if (msg.op === 0) {
+          var hello = { op: 1, d: { rpcVersion: 1 } };
+          var auth = msg.d.authentication;
+          if (auth) hello.d.authentication = await sha256b64(await sha256b64(pwEl.value + auth.salt) + auth.challenge);
+          ws.send(JSON.stringify(hello));
+        } else if (msg.op === 2) {
+          setStatus('OBS 연결됨', true);
+          send();
+        }
+      };
+      ws.onclose = function (e) { setStatus(e.code === 4009 ? '비밀번호 오류' : 'OBS 미연결'); };
+    }
+    document.getElementById('connect').onclick = connect;
+    document.getElementById('shuffle').onclick = function () { state.seed = Math.floor(Math.random() * 1e9); send(); };
+    document.getElementById('reset').onclick = function () { state.off = []; send(); };
+    if (channel) channel.onmessage = function (e) { state = e.data; save(); draw(); };
+    draw();
+    connect();
+  }
+</script>
+
+<script>
+  if (!q.has('control')) {
+    document.body.className = 'overlay';
+    document.documentElement.style.setProperty('--off-opacity', OFF_OPACITY);
+    var stage = document.createElement('div');
+    stage.className = 'stage';
+    document.body.appendChild(stage);
+    var words = [], laidSeed = null;
+
+    // 겹치지 않게 무작위 배치하고, 자리가 모자라면 전체 크기를 줄여 다시 배치합니다
+    function layout() {
+      for (var scale = 1; scale > 0.3; scale *= 0.92) {
+        if (tryLayout(scale)) break;
+      }
+      laidSeed = state.seed;
+    }
+    function tryLayout(scale) {
+      stage.textContent = '';
+      words = [];
+      var rand = mulberry32(state.seed);
+      var order = KEYWORDS.map(function (_, i) { return i; });
+      for (var i = order.length - 1; i > 0; i--) {
+        var j = Math.floor(rand() * (i + 1)), t = order[i]; order[i] = order[j]; order[j] = t;
+      }
+      var base = 56 * scale, gap = 10, placed = [];
+      return order.every(function (idx) {
+        var el = document.createElement('div');
+        el.className = 'kw';
+        el.textContent = KEYWORDS[idx];
+        el.onclick = function () { toggle(idx); share(); apply(); };
+        el.style.fontSize = Math.round(base * (0.85 + rand() * 0.3)) + 'px';
+        stage.appendChild(el);
+        words[idx] = el;
+        var angle = (rand() - 0.5) * 10;
+        var w = el.offsetWidth, h = el.offsetHeight;
+        for (var n = 0; n < 300; n++) {
+          var x = AREA[0] + rand() * Math.max(0, AREA[2] - AREA[0] - w);
+          var y = AREA[1] + rand() * Math.max(0, AREA[3] - AREA[1] - h);
+          var box = [x - gap, y - gap, x + w + gap, y + h + gap];
+          if (!placed.some(function (b) { return box[0] < b[2] && b[0] < box[2] && box[1] < b[3] && b[1] < box[3]; })) {
+            placed.push(box);
+            el.style.left = x + 'px'; el.style.top = y + 'px';
+            el.style.transform = 'rotate(' + angle.toFixed(1) + 'deg)';
+            return true;
+          }
+        }
+        return false;
+      });
+    }
+    function apply() {
+      if (laidSeed !== state.seed) layout();
+      words.forEach(function (el, i) { el.classList.toggle('off', state.off.indexOf(i) >= 0); });
+    }
+    function receive(next) {
+      if (!next || !Array.isArray(next.off)) return;
+      state = { seed: next.seed, off: next.off.slice() };
+      save();
+      apply();
+    }
+    // OBS 독 → obs-websocket → obs-browser emit_event
+    addEventListener('keyword-state', function (e) { receive(e.detail); });
+    if (channel) channel.onmessage = function (e) { receive(e.data); };
+    addEventListener('storage', function (e) { if (e.key === STORE) receive(load()); });
+
+    function fit() {
+      var s = Math.min(innerWidth / 1920, innerHeight / 1080);
+      stage.style.transform = 'translate(' + (innerWidth - 1920 * s) / 2 + 'px,' +
+        (innerHeight - 1080 * s) / 2 + 'px) scale(' + s + ')';
+    }
+    addEventListener('resize', fit);
+    fit();
+    apply();
+    if (document.fonts) document.fonts.ready.then(function () { laidSeed = null; apply(); });
+  }
+</script>
+</body>
+</html>
