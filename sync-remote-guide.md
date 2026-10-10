@@ -1,13 +1,19 @@
-# 키워드선택 — Sync 오버레이 + 원격 조작 가이드
+# 키워드선택·대진표 — Sync 오버레이 + 원격 조작 가이드
 
 ```
 관리자 (어디서든 브라우저)                 방송 PC (OBS)
-keyword.html?control&key=…  ──저장──▶  Firebase  ──실시간──▶  Sync 오버레이
-                                                          └ 외부 URL 위젯: keyword.html
+○○.html?control&key=…  ──저장──▶  Firebase  ──실시간──▶  Sync 오버레이
+                                                     └ 외부 URL 위젯: ○○.html
 ```
 
-- 방송 화면: Sync 오버레이의 **외부 URL 위젯**으로 `keyword.html`을 띄웁니다.
-- 조작판: 관리자가 PC·휴대폰 어디서든 `keyword.html?control&key=비밀키`를 열어 조작합니다.
+| 위젯 | 방송 화면 | 조작판 |
+|---|---|---|
+| 키워드선택 | `keyword.html` | `keyword.html?control&key=비밀키` |
+| 대진표 | `bracket.html` | `bracket.html?control&key=비밀키` |
+
+- 방송 화면: Sync 오버레이의 **외부 URL 위젯**으로 띄웁니다.
+- 조작판: 관리자가 PC·휴대폰 어디서든 열어 조작합니다.
+- 두 위젯은 같은 Firebase·같은 비밀키를 함께 씁니다. 아래 1~3단계는 한 번만 하면 됩니다.
 - 중계: Firebase Realtime Database(무료)가 상태를 저장하고 실시간으로 전달합니다.
 
 > Sync의 **인라인(HTML 업로드) 위젯**은 외부 통신이 막혀 있어(`connect-src 'none'`) 이 기능을 쓸 수 없습니다. 반드시 **외부 URL 위젯**으로 넣어야 합니다.
@@ -49,12 +55,19 @@ keyword.html?control&key=…  ──저장──▶  Firebase  ──실시간�
         "state": { ".read": true },
         ".write": "newData.child('key').val() === root.child('secrets').child($room).val()"
       }
+    },
+    "bracket": {
+      "$room": {
+        "state": { ".read": true },
+        ".write": "newData.child('key').val() === root.child('secrets').child($room).val()"
+      }
     }
   }
 }
 ```
 
-- 화면(위젯)은 키워드 상태를 **읽기만** 합니다.
+- 화면(위젯)은 상태를 **읽기만** 합니다.
+- 이미 키워드용 규칙만 게시했다면 위 전체로 교체해 다시 **게시**하세요. (대진표 저장이 `key 확인` 오류로 실패합니다)
 - **비밀키를 아는 사람만** 상태를 바꿀 수 있습니다.
 
 ### 2-3. 비밀키 만들기
@@ -118,9 +131,9 @@ https://프로젝트이름-default-rtdb.asia-southeast1.firebasedatabase.app/
 
 ---
 
-## 3. keyword.html에 DB 주소 넣기 (한 번만)
+## 3. DB 주소 넣기 (한 번만)
 
-`keyword.html` 위쪽의 `DB_URL`에 2-1에서 복사한 주소를 넣고 커밋합니다.
+`keyword.html`과 `bracket.html` **두 파일 모두** 위쪽의 `DB_URL`에 2-1에서 복사한 주소를 넣고 커밋합니다.
 
 ```js
 var DB_URL = 'https://프로젝트이름-default-rtdb.asia-southeast1.firebasedatabase.app';
@@ -138,13 +151,15 @@ var ROOM = 'main';
 3. 주소
    ```
    https://bbeardev.github.io/cisnedjmax/keyword.html
+   https://bbeardev.github.io/cisnedjmax/bracket.html
    ```
+   (위젯마다 하나씩, 필요한 장면에 추가)
 4. 크기: **1920 × 1080** (화면 전체)
-5. 저장 후 OBS의 Sync 오버레이 브라우저 소스에서 키워드가 보이면 완료
+5. 저장 후 OBS의 Sync 오버레이 브라우저 소스에 배경이 보이면 완료
 
 ---
 
-## 5. 관리자 조작판
+## 5. 키워드 조작판
 
 아래 주소를 관리자 브라우저(PC·휴대폰)로 엽니다.
 
@@ -166,13 +181,41 @@ https://bbeardev.github.io/cisnedjmax/keyword.html?control&key=여기에비밀�
 
 ---
 
+## 6. 대진표 조작판
+
+```
+https://bbeardev.github.io/cisnedjmax/bracket.html?control&key=여기에비밀키
+```
+
+칸은 그림 기준으로 나뉘어 있습니다.
+
+| 조작판 구역 | 화면 위치 |
+|---|---|
+| 1라운드 (6칸) | 맨 아래 줄, 왼쪽부터 1~6 |
+| 2라운드 (3칸) | 그 위 작은 칸, 왼쪽부터 1~3 |
+| 3라운드 (2칸) | 그 위 칸, 왼쪽 1 / 오른쪽 2 |
+| 우승 (1칸) | 맨 위 |
+
+| 기능 | 동작 |
+|---|---|
+| 이름 입력 | 입력 후 **Enter** 또는 다른 곳 클릭 시 화면에 반영 (지우면 빈 칸) |
+| 승자 | 누르면 그 칸이 노란색으로 강조, 한 번 더 누르면 해제 (이름이 있는 칸만 표시) |
+| 승자 표시 해제 | 모든 강조 해제 (이름은 유지) |
+| 전체 비우기 | 이름·강조 모두 삭제 (확인창 표시) |
+
+- 다음 라운드 진출은 **수동 입력**입니다. 승자를 강조한 뒤 윗 칸에 이름을 직접 입력하세요.
+- 긴 닉네임은 칸에 맞게 글자가 자동으로 작아집니다.
+- Firebase 없이 OBS에서 단독으로 쓸 때는 기존처럼 파일의 `BRACKET` 값이나 `?r1=A,B,…&r4=A` 주소로 입력할 수 있습니다.
+
+---
+
 ## 문제 해결
 
 | 증상 | 확인할 것 |
 |---|---|
 | 조작판에 **DB_URL 미설정** | 3단계 `DB_URL` 입력·커밋 여부, 또는 주소에 `&db=…` 추가 |
 | 조작판에 **주소에 &key= 가 없습니다** | 조작판 주소 끝에 `&key=비밀키`를 붙였는지 |
-| **저장 실패: key 확인** | Firebase 데이터 탭 `secrets/main` 값과 주소의 `key`가 같은지(2-4), 2-2 규칙을 게시했는지 |
+| **저장 실패: key 확인** | Firebase 데이터 탭 `secrets/main` 값과 주소의 `key`가 같은지(2-4), 2-2 규칙(`keyword`·`bracket` 둘 다)을 게시했는지 |
 | 조작판은 정상인데 화면이 그대로 | Sync 위젯이 **외부 URL** 종류인지(인라인 X), 주소가 `github.io`인지 |
 | 위젯 자리에 아무것도 안 나옴 | 1단계 GitHub Pages가 켜졌는지, 주소를 브라우저로 직접 열어 확인 |
 | 커밋한 수정이 안 보임 | GitHub Pages 반영까지 1~2분 대기 후 Sync 오버레이 새로고침 |
