@@ -195,7 +195,7 @@
       html += '<td></td></tr></table></div>';
 
       var r = state.rand;
-      html += '<div class="rand">랜덤 조건: <select data-rand="b">' + BUTTONS.map(function (b) {
+      html += '<div class="rand">랜덤 조건: <select data-rand="b"><option value="ALL"' + (r.b === 'ALL' ? ' selected' : '') + '>전체</option>' + BUTTONS.map(function (b) {
         return '<option' + (r.b === b ? ' selected' : '') + '>' + b + '</option>';
       }).join('') + '</select><select data-rand="d"><option value="">모든 난이도</option>' + DIFFS.map(function (d) {
         return '<option' + (r.d === d ? ' selected' : '') + '>' + d + '</option>';
@@ -298,10 +298,13 @@
       matchSongs(state, g, edit).forEach(function (x) { if (x.chart) used[x.chart.s] = true; });
       SONGS.forEach(function (song) {
         if (used[song.title]) return;
-        var pats = (song.patterns || {})[f.b] || {};
-        Object.keys(pats).forEach(function (d) {
-          var l = pats[d].level;
-          if ((!f.d || f.d === d) && l >= f.min && l <= f.max) pool.push({ s: song.title, n: song.name, b: f.b, d: d, l: l });
+        // 'ALL'이면 모든 버튼 모드에서 뽑습니다
+        (f.b === 'ALL' ? BUTTONS : [f.b]).forEach(function (b) {
+          var pats = (song.patterns || {})[b] || {};
+          Object.keys(pats).forEach(function (d) {
+            var l = pats[d].level;
+            if ((!f.d || f.d === d) && l >= f.min && l <= f.max) pool.push({ s: song.title, n: song.name, b: b, d: d, l: l });
+          });
         });
       });
       if (!pool.length) return alert('조건에 맞는 보면이 없습니다. 랜덤 조건을 바꿔 주세요.');

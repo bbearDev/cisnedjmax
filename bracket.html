@@ -31,18 +31,15 @@
   .slot.big { font-size: 36px; }
   .slot.has-sum.small { font-size: 26px; }
   .slot.has-sum.big { font-size: 31px; }
-  /* 이름 아래 3곡 합산 점수, 합계가 더 높은 쪽은 주황 + ▲ */
+  /* 이름 아래 3곡 합산 점수 */
   .slot .sum { font-size: 19px; font-weight: 800; color: #9a5bb5; margin-top: 4px; font-variant-numeric: tabular-nums; }
   .slot.small .sum { font-size: 16px; margin-top: 2px; }
-  .slot .sum.lead { color: #e86a00; }
-  .slot .sum.lead::before { content: '▲ '; }
   .slot.win {
     background: linear-gradient(180deg, #fff3b0, #ffd23f);
     box-shadow: 0 0 0 4px #fff, 0 0 26px 8px rgba(255, 200, 40, 0.85);
     font-weight: 900;
   }
   .slot.win .sum { color: #7a3d8f; }
-  .slot.win .sum.lead { color: #c43d00; }
 
   /* 조작판 (?control) */
   body.control { background: #1e1b24; color: #eee; font-size: 15px; overflow: auto; }
@@ -219,7 +216,6 @@
         el.classList.toggle('has-sum', sum != null);
         el.classList.toggle('win', win);
         sumEl.textContent = fmtScore(sum);
-        sumEl.classList.toggle('lead', sum != null && leader(state, g, mid) === pid);
         if (nameEl.textContent !== name || hadSum !== (sum != null)) {
           nameEl.textContent = name; nameEl.style.fontSize = ''; shrinkToFit(nameEl);
         }

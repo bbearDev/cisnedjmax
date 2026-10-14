@@ -27,6 +27,9 @@
     box-shadow: 0 4px 0 rgba(74, 20, 88, 0.35);
     transition: opacity 0.3s ease 0.35s;
   }
+  /* 숨김: 짧게 사라지고, 공개(.reveal)할 때는 천천히 떠오르며 나타납니다 */
+  .kw.hid { opacity: 0 !important; filter: blur(6px); transition: opacity 0.3s ease, transform 0.3s ease, filter 0.3s ease; }
+  .kw.reveal { transition: opacity 1.2s ease, transform 1.2s cubic-bezier(0.2, 0.8, 0.2, 1), filter 1.2s ease; }
   .kw::after {
     content: ''; position: absolute; left: 10px; right: 10px; top: 50%; height: 6px; margin-top: -3px;
     background: #d6246e; border-radius: 3px;
@@ -47,6 +50,10 @@
   .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
   .list button { font-weight: 700; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .list button.off { text-decoration: line-through; text-decoration-color: #ff5c93; text-decoration-thickness: 2px; opacity: 0.5; }
+  .list .item { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .list .item.hid button.word { border-style: dashed; color: #9a8fa8; }
+  .list button.hide { font-weight: 400; font-size: 12px; padding: 4px 8px; text-align: center; }
+  .list button.hide.on { background: #7b3a96; border-color: #c48ee0; font-weight: 700; }
   .status { font-size: 13px; color: #aaa; margin-left: auto; }
   .status.ok { color: #7ee08a; }
   .status.err { color: #ff6b6b; }
@@ -74,18 +81,19 @@
   DB_URL = (q.get('db') || DB_URL).replace(/\/$/, '');
   ROOM = q.get('room') || ROOM;
   var STATE_URL = DB_URL + '/keyword/' + encodeURIComponent(ROOM);
-  var state = { words: KEYWORDS.slice(), seed: 1, off: [] };
+  // off: 줄 그은 키워드, hidden: 방송 화면에서 숨긴 키워드
+  var state = { words: KEYWORDS.slice(), seed: 1, off: [], hidden: [] };
 
   // Firebase는 빈 배열을 지우고 배열을 객체로 돌려줄 수 있어 정리합니다
   function normalize(s) {
     function list(v) { return v ? Object.keys(v).map(function (k) { return v[k]; }) : []; }
     if (!s) return null;
     var words = list(s.words);
-    return { words: words.length ? words : KEYWORDS.slice(), seed: s.seed || 1, off: list(s.off) };
+    return { words: words.length ? words : KEYWORDS.slice(), seed: s.seed || 1, off: list(s.off), hidden: list(s.hidden) };
   }
-  function toggle(word) {
-    var at = state.off.indexOf(word);
-    if (at >= 0) state.off.splice(at, 1); else state.off.push(word);
+  function toggle(word, field) {
+    var arr = state[field || 'off'], at = arr.indexOf(word);
+    if (at >= 0) arr.splice(at, 1); else arr.push(word);
   }
   // DB 변경을 실시간으로 받습니다 (Firebase REST 스트리밍)
   function subscribe(onState, onStatus) {
@@ -134,11 +142,19 @@
     function draw() {
       list.textContent = '';
       state.words.forEach(function (word) {
+        var hid = state.hidden.indexOf(word) >= 0;
+        var item = document.createElement('div');
+        item.className = 'item' + (hid ? ' hid' : '');
         var b = document.createElement('button');
         b.textContent = word; b.title = word;
-        if (state.off.indexOf(word) >= 0) b.className = 'off';
+        b.className = 'word' + (state.off.indexOf(word) >= 0 ? ' off' : '');
         b.onclick = function () { toggle(word); send(); };
-        list.appendChild(b);
+        var h = document.createElement('button');
+        h.className = 'hide' + (hid ? ' on' : '');
+        h.textContent = hid ? '숨김 해제' : '숨김';
+        h.onclick = function () { toggle(word, 'hidden'); send(); };
+        item.appendChild(b); item.appendChild(h);
+        list.appendChild(item);
       });
       if (document.activeElement !== wordsEl) wordsEl.value = state.words.join('\n');
     }
@@ -160,6 +176,7 @@
       var words = wordsEl.value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
       if (!words.length) return;
       state.off = state.off.filter(function (w) { return words.indexOf(w) >= 0; });
+      state.hidden = state.hidden.filter(function (w) { return words.indexOf(w) >= 0; });
       state.words = words;
       wordsEl.blur();
       send();
@@ -204,6 +221,8 @@
         el.className = 'kw';
         el.textContent = word;
         if (!DB_URL) el.onclick = function () { toggle(word); apply(); };
+        // 숨긴 키워드는 처음부터 숨긴 채 만들어 자리만 차지합니다
+        if (state.hidden.indexOf(word) >= 0) el.classList.add('hid');
         el.style.fontSize = Math.round(base * (0.85 + rand() * 0.3)) + 'px';
         stage.appendChild(el);
         els[word] = el;
@@ -216,16 +235,31 @@
           if (!placed.some(function (b) { return box[0] < b[2] && b[0] < box[2] && box[1] < b[3] && b[1] < box[3]; })) {
             placed.push(box);
             el.style.left = x + 'px'; el.style.top = y + 'px';
-            el.style.transform = 'rotate(' + angle.toFixed(1) + 'deg)';
+            el.dataset.rot = angle.toFixed(1);
+            setTransform(el);
             return true;
           }
         }
         return false;
       });
     }
+    // 숨긴 동안은 살짝 작고 아래에 있다가, 공개되면 제자리로 떠오릅니다
+    function setTransform(el) {
+      el.style.transform = 'rotate(' + el.dataset.rot + 'deg)' +
+        (el.classList.contains('hid') ? ' translateY(18px) scale(0.85)' : '');
+    }
     function apply() {
       if (laidOut !== state.seed + '|' + state.words.join('|')) layout();
-      Object.keys(els).forEach(function (w) { els[w].classList.toggle('off', state.off.indexOf(w) >= 0); });
+      Object.keys(els).forEach(function (w) {
+        var el = els[w], hid = state.hidden.indexOf(w) >= 0;
+        el.classList.toggle('off', state.off.indexOf(w) >= 0);
+        if (hid === el.classList.contains('hid')) return;
+        clearTimeout(el.revealTimer);
+        el.classList.toggle('reveal', !hid);
+        el.classList.toggle('hid', hid);
+        setTransform(el);
+        if (!hid) el.revealTimer = setTimeout(function () { el.classList.remove('reveal'); }, 1300);
+      });
     }
 
     if (DB_URL) subscribe(function (s) { if (s) { state = s; apply(); } });
