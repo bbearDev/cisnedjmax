@@ -144,7 +144,9 @@
     }
     function send() {
       draw();
-      fetch(STATE_URL + '.json', { method: 'PUT', body: JSON.stringify({ key: KEY, state: state }) })
+      // key는 매번 '비밀키:새 값'으로 보내야 규칙을 통과합니다 (sync-remote-guide.md 2-2)
+      var key = KEY + ':' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      fetch(STATE_URL + '.json', { method: 'PUT', body: JSON.stringify({ key: key, state: state }) })
         .then(function (r) {
           if (r.status === 401) setStatus('저장 실패: key 확인', 'err');
           else if (!r.ok) setStatus('저장 실패 (' + r.status + ')', 'err');

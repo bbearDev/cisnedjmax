@@ -22,18 +22,27 @@
   /* 이미지의 흰 칸 위에 정확히 겹치는 이름 칸 */
   .slot {
     position: absolute; box-sizing: border-box; padding: 0 14px;
-    display: flex; align-items: center; justify-content: center;
-    white-space: nowrap; overflow: hidden;
-    font-weight: 800; color: #4a1458; letter-spacing: -0.01em;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-weight: 800; color: #4a1458; letter-spacing: -0.01em; line-height: 1.1;
     transition: background 0.3s, box-shadow 0.3s;
   }
+  .slot .name { display: block; width: 100%; text-align: center; white-space: nowrap; overflow: hidden; }
   .slot.small { font-size: 30px; }
   .slot.big { font-size: 36px; }
+  .slot.has-sum.small { font-size: 26px; }
+  .slot.has-sum.big { font-size: 31px; }
+  /* 이름 아래 3곡 합산 점수, 합계가 더 높은 쪽은 주황 + ▲ */
+  .slot .sum { font-size: 19px; font-weight: 800; color: #9a5bb5; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .slot.small .sum { font-size: 16px; margin-top: 2px; }
+  .slot .sum.lead { color: #e86a00; }
+  .slot .sum.lead::before { content: '▲ '; }
   .slot.win {
     background: linear-gradient(180deg, #fff3b0, #ffd23f);
     box-shadow: 0 0 0 4px #fff, 0 0 26px 8px rgba(255, 200, 40, 0.85);
     font-weight: 900;
   }
+  .slot.win .sum { color: #7a3d8f; }
+  .slot.win .sum.lead { color: #c43d00; }
 
   /* 조작판 (?control) */
   body.control { background: #1e1b24; color: #eee; font-size: 15px; overflow: auto; }
@@ -43,31 +52,131 @@
     background: #3b3347; color: #eee; border: 1px solid #6b5a80; border-radius: 6px;
     padding: 8px 12px; font: inherit; cursor: pointer;
   }
-  .round { margin-bottom: 14px; }
+  .panel button:disabled { opacity: 0.4; cursor: default; }
+  .panel select { background: #2b2733; color: #eee; border: 1px solid #555; border-radius: 6px; padding: 8px; font: inherit; width: 100%; }
+  .round { margin-bottom: 18px; }
   .round h3 { margin: 0 0 6px; font-size: 14px; color: #b9a6d0; }
+  .hint { font-size: 13px; color: #9a90a8; margin: 4px 0 0; }
   .cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; }
-  .cell { display: flex; gap: 4px; }
-  .cell input { flex: 1; min-width: 0; background: #2b2733; color: #eee; border: 1px solid #555; border-radius: 6px; padding: 8px; font: inherit; }
-  .cell button.win { background: #ffd23f; color: #3a2a00; border-color: #ffd23f; font-weight: 800; }
+  .match { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+  .match .label { width: 80px; color: #b9a6d0; font-size: 14px; }
+  .match button { flex: 1; min-width: 160px; display: flex; justify-content: space-between; gap: 8px; }
+  .match button.win { background: #ffd23f; color: #3a2a00; border-color: #ffd23f; font-weight: 800; }
+  .match .sum { font-variant-numeric: tabular-nums; opacity: 0.8; }
+  .match .sum.lead { color: #ff9a3c; opacity: 1; font-weight: 800; }
+  .match button.win .sum.lead { color: #b04a00; }
   .status { font-size: 13px; color: #aaa; margin-left: auto; }
   .status.ok { color: #7ee08a; }
   .status.err { color: #ff6b6b; }
 </style>
 </head>
 <body>
-<script>
-  // Firebase Realtime Database 주소와 방 이름 (sync-remote-guide.md 참고)
-  var DB_URL = 'https://cisne-djmax-default-rtdb.asia-southeast1.firebasedatabase.app/';
-  var ROOM = 'main';
-  // DB 없이 쓸 때의 기본값. URL로도 덮어쓸 수 있습니다: ?r1=A,B,C,D,E,F&r2=A,D,E&r3=A,E&r4=A
-  var BRACKET = {
-    r1: ['', '', '', '', '', ''], // 맨 아래 6칸 (왼쪽부터)
-    r2: ['', '', ''],             // 그 위 작은 3칸
-    r3: ['', ''],                 // 그 위 2칸
-    r4: ['']                      // 맨 위 (우승)
-  };
-  var ROUND_NAMES = { r1: '1라운드 (맨 아래 6칸)', r2: '2라운드 (작은 3칸)', r3: '3라운드 (2칸)', r4: '우승' };
+<script src="tourney.js"></script>
 
+<script>
+  var state = normalize(null);
+
+  if (q.has('control')) {
+    document.body.className = 'control';
+    document.body.innerHTML = '<div class="panel"><div class="bar"><button id="clearWin">승자 전체 해제</button>' +
+      '<button id="clearAll">전체 초기화</button><span class="status" id="status">연결 중…</span></div>' +
+      '<div id="view"></div></div>';
+    var statusEl = document.getElementById('status');
+    var view = document.getElementById('view');
+    var migrated = false;
+
+    function setStatus(t) { statusEl.textContent = t[0]; statusEl.className = 'status ' + (t[1] || ''); }
+    function set(patch) {
+      Object.keys(patch).forEach(function (p) { setPath(state, p, patch[p]); });
+      draw();
+      save(patch).then(function (code) { setStatus(statusText(code)); });
+    }
+    function esc(t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+
+    function draw() {
+      var g = derive(state);
+      var ids = Object.keys(state.players).sort(function (a, b) { return state.players[a].n - state.players[b].n; });
+      var html = '<div class="round"><h3>6강 선수 배치 (맨 아래 칸 왼쪽부터)</h3><div class="cells">';
+      state.r1.forEach(function (cur, i) {
+        html += '<select data-slot="' + i + '"><option value="">' + (i + 1) + '번 칸 — 비움</option>';
+        ids.forEach(function (id) {
+          // 다른 칸에 이미 배치된 선수는 고를 수 없습니다
+          if (id !== cur && state.r1.indexOf(id) >= 0) return;
+          html += '<option value="' + id + '"' + (id === cur ? ' selected' : '') + '>' +
+            (i + 1) + '번 칸 — ' + esc(state.players[id].name) + '</option>';
+        });
+        html += '</select>';
+      });
+      html += '</div><p class="hint">선수 등록·이름 수정은 트랙리스트 조작판(track.html?control)에서 합니다.' +
+        (ids.length ? '' : ' 아직 등록된 선수가 없습니다.') + '</p></div>';
+
+      html += '<div class="round"><h3>경기 결과 — 승자를 누르면 다음 라운드로 진출 (다시 누르면 취소)</h3>';
+      MATCHES.forEach(function (m) {
+        var lead = leader(state, g, m.id);
+        html += '<div class="match"><span class="label">' + m.name + '</span>';
+        g[m.id].forEach(function (pid) {
+          var t = total(state, g, m.id, pid);
+          html += '<button data-match="' + m.id + '" data-pid="' + pid + '"' + (pid ? '' : ' disabled') +
+            (pid && g.win[m.id] === pid ? ' class="win"' : '') + '><span>' + (esc(playerName(state, pid)) || '미정') +
+            '</span><span class="sum' + (pid && lead === pid ? ' lead' : '') + '">' + fmtScore(t) + '</span></button>';
+        });
+        html += '</div>';
+        if (m.id === 'm4') html += '<p class="hint">부전승 (4강 오른쪽 → 준결승 오른쪽): ' + (esc(playerName(state, g.r2[2])) || '미정') + '</p>';
+      });
+      html += '<p class="hint">결승 (우승): ' + (esc(playerName(state, g.r4[0])) || '미정') + '</p></div>';
+      view.innerHTML = html;
+
+      view.querySelectorAll('select[data-slot]').forEach(function (el) {
+        el.onchange = function () { var p = {}; p['r1/' + el.dataset.slot] = el.value; set(p); };
+      });
+      view.querySelectorAll('button[data-match]').forEach(function (b) {
+        b.onclick = function () {
+          var m = b.dataset.match, p = {};
+          p['matches/' + m + '/win'] = g.win[m] === b.dataset.pid ? null : b.dataset.pid;
+          set(p);
+        };
+      });
+    }
+
+    // 이전 방식(칸에 이름 직접 입력)으로 저장된 6강 이름은 선수로 등록해 옮깁니다
+    function migrate() {
+      if (migrated) return;
+      migrated = true;
+      if (Object.keys(state.players).length) return;
+      var patch = {}, any = false;
+      state.r1.forEach(function (name, i) {
+        if (!name) return;
+        var id = 'p' + Date.now().toString(36) + i;
+        patch['players/' + id] = { name: name, n: Date.now() + i };
+        patch['r1/' + i] = id;
+        any = true;
+      });
+      if (!any) return;
+      ['r2', 'r3', 'r4', 'win'].forEach(function (k) { patch[k] = null; });
+      set(patch);
+    }
+
+    document.getElementById('clearWin').onclick = function () {
+      var p = {};
+      MATCHES.forEach(function (m) { p['matches/' + m.id + '/win'] = null; });
+      set(p);
+    };
+    document.getElementById('clearAll').onclick = function () {
+      if (!confirm('6강 배치와 승자를 모두 지울까요? (선수 등록·곡·점수는 그대로 남습니다)')) return;
+      var p = {};
+      for (var i = 0; i < 6; i++) p['r1/' + i] = '';
+      MATCHES.forEach(function (m) { p['matches/' + m.id + '/win'] = null; });
+      set(p);
+    };
+
+    if (!KEY) setStatus(['주소에 &key= 가 없습니다', 'err']);
+    else subscribe(function (s) { state = s; draw(); migrate(); },
+      function (ok) { setStatus(ok ? ['실시간 연결됨', 'ok'] : ['재연결 중…', 'err']); });
+    draw();
+  }
+</script>
+
+<script>
   // 4bracket.png 흰 칸의 측정 좌표 [left, top, width, height]
   var SLOTS = {
     r1: [[120, 788, 257, 92], [392, 788, 257, 92], [695, 788, 257, 92],
@@ -77,119 +186,6 @@
     r4: [[825, 466, 257, 92]]
   };
 
-  var q = new URLSearchParams(location.search);
-  DB_URL = (q.get('db') || DB_URL).replace(/\/$/, '');
-  ROOM = q.get('room') || ROOM;
-  var STATE_URL = DB_URL + '/bracket/' + encodeURIComponent(ROOM);
-
-  // state: { r1: [...], r2: [...], r3: [...], r4: [...], win: ['r2-0', ...] }
-  var state = { win: [] };
-  Object.keys(SLOTS).forEach(function (r) {
-    state[r] = q.has(r) ? q.get(r).split(',') : BRACKET[r].slice();
-  });
-
-  // Firebase는 빈 배열을 지우고 배열을 객체로 돌려줄 수 있어 정리합니다
-  function normalize(s) {
-    function list(v) { return v ? Object.keys(v).map(function (k) { return v[k]; }) : []; }
-    if (!s) return null;
-    var out = { win: list(s.win) };
-    Object.keys(SLOTS).forEach(function (r) {
-      var v = s[r] || {};
-      out[r] = SLOTS[r].map(function (_, i) { return v[i] || ''; });
-    });
-    return out;
-  }
-  function subscribe(onState, onStatus) {
-    var es = new EventSource(STATE_URL + '/state.json');
-    es.addEventListener('put', function (e) {
-      var msg = JSON.parse(e.data);
-      if (msg.path === '/') onState(normalize(msg.data));
-      else refetch();
-    });
-    es.addEventListener('patch', refetch);
-    es.onopen = function () { onStatus && onStatus(true); };
-    es.onerror = function () { onStatus && onStatus(false); };
-    function refetch() {
-      fetch(STATE_URL + '/state.json').then(function (r) { return r.json(); })
-        .then(function (d) { onState(normalize(d)); });
-    }
-  }
-</script>
-
-<script>
-  if (q.has('control')) {
-    document.body.className = 'control';
-    var html = '<div class="panel"><div class="bar"><button id="clearWin">승자 표시 해제</button>' +
-      '<button id="clearAll">전체 비우기</button><span class="status" id="status">연결 중…</span></div>';
-    Object.keys(SLOTS).forEach(function (r) {
-      html += '<div class="round"><h3>' + ROUND_NAMES[r] + '</h3><div class="cells">';
-      SLOTS[r].forEach(function (_, i) {
-        html += '<div class="cell"><input data-id="' + r + '-' + i + '" placeholder="' + (i + 1) + '번 칸">' +
-          '<button data-win="' + r + '-' + i + '">승자</button></div>';
-      });
-      html += '</div></div>';
-    });
-    document.body.innerHTML = html + '</div>';
-
-    var KEY = q.get('key') || '';
-    var statusEl = document.getElementById('status');
-    var inputs = document.querySelectorAll('input[data-id]');
-    var winBtns = document.querySelectorAll('button[data-win]');
-
-    function setStatus(text, cls) { statusEl.textContent = text; statusEl.className = 'status ' + (cls || ''); }
-    function draw() {
-      inputs.forEach(function (el) {
-        var p = el.dataset.id.split('-');
-        if (document.activeElement !== el) el.value = state[p[0]][+p[1]];
-      });
-      winBtns.forEach(function (b) { b.classList.toggle('win', state.win.indexOf(b.dataset.win) >= 0); });
-    }
-    function send() {
-      draw();
-      fetch(STATE_URL + '.json', { method: 'PUT', body: JSON.stringify({ key: KEY, state: state }) })
-        .then(function (r) {
-          if (r.status === 401) setStatus('저장 실패: key 확인', 'err');
-          else if (!r.ok) setStatus('저장 실패 (' + r.status + ')', 'err');
-          else setStatus('실시간 연결됨', 'ok');
-        })
-        .catch(function () { setStatus('저장 실패: 네트워크', 'err'); });
-    }
-    // 이름은 입력칸을 벗어나거나 Enter를 누르면 저장합니다
-    inputs.forEach(function (el) {
-      function commit() {
-        var p = el.dataset.id.split('-');
-        if (state[p[0]][+p[1]] === el.value.trim()) return;
-        state[p[0]][+p[1]] = el.value.trim();
-        send();
-      }
-      el.addEventListener('change', commit);
-      el.addEventListener('keydown', function (e) { if (e.key === 'Enter') el.blur(); });
-    });
-    winBtns.forEach(function (b) {
-      b.onclick = function () {
-        var id = b.dataset.win, at = state.win.indexOf(id);
-        if (at >= 0) state.win.splice(at, 1); else state.win.push(id);
-        send();
-      };
-    });
-    document.getElementById('clearWin').onclick = function () { state.win = []; send(); };
-    document.getElementById('clearAll').onclick = function () {
-      if (!confirm('모든 이름과 승자 표시를 지울까요?')) return;
-      Object.keys(SLOTS).forEach(function (r) { state[r] = SLOTS[r].map(function () { return ''; }); });
-      state.win = [];
-      send();
-    };
-
-    if (!DB_URL) setStatus('DB_URL 미설정', 'err');
-    else if (!KEY) setStatus('주소에 &key= 가 없습니다', 'err');
-    else subscribe(function (s) {
-      if (s) { state = s; draw(); } else send();
-    }, function (ok) { setStatus(ok ? '실시간 연결됨' : '재연결 중…', ok ? 'ok' : 'err'); });
-    draw();
-  }
-</script>
-
-<script>
   if (!q.has('control')) {
     document.body.className = 'overlay';
     var stage = document.createElement('div');
@@ -203,17 +199,30 @@
         el.className = 'slot ' + (round === 'r2' ? 'small' : 'big');
         el.style.left = r[0] + 'px'; el.style.top = r[1] + 'px';
         el.style.width = r[2] + 'px'; el.style.height = r[3] + 'px';
+        el.innerHTML = '<span class="name"></span><span class="sum"></span>';
         stage.appendChild(el);
         els[round + '-' + i] = el;
       });
     });
 
     function apply() {
+      var g = derive(state);
       Object.keys(els).forEach(function (id) {
-        var p = id.split('-'), el = els[id];
-        var name = (state[p[0]][+p[1]] || '').trim();
-        if (el.textContent !== name) { el.textContent = name; el.style.fontSize = ''; shrinkToFit(el); }
-        el.classList.toggle('win', !!name && state.win.indexOf(id) >= 0);
+        var p = id.split('-'), round = p[0], i = +p[1], el = els[id];
+        var pid = g[round][i], mid = SLOT_MATCH[round][i];
+        var name = playerName(state, pid);
+        var sum = pid && mid ? total(state, g, mid, pid) : null;
+        // 승자 강조: 경기 승자, 4강 부전승, 결승(우승) 칸
+        var win = !!name && (mid ? g.win[mid] === pid : true);
+        var nameEl = el.firstChild, sumEl = el.lastChild;
+        var hadSum = el.classList.contains('has-sum');
+        el.classList.toggle('has-sum', sum != null);
+        el.classList.toggle('win', win);
+        sumEl.textContent = fmtScore(sum);
+        sumEl.classList.toggle('lead', sum != null && leader(state, g, mid) === pid);
+        if (nameEl.textContent !== name || hadSum !== (sum != null)) {
+          nameEl.textContent = name; nameEl.style.fontSize = ''; shrinkToFit(nameEl);
+        }
       });
     }
     // 긴 이름은 칸을 넘지 않도록 글자 크기를 줄입니다
@@ -225,21 +234,15 @@
       }
     }
 
-    if (DB_URL) subscribe(function (s) { if (s) { state = s; apply(); } });
+    subscribe(function (s) { state = s; apply(); });
     // Sync 외부 URL 위젯 규약 (https://sync.havana.moe/widget-guide)
     if (parent !== window) parent.postMessage({ source: 'rhythm-tourney-widget', type: 'ready' }, '*');
 
-    function fit() {
-      var s = Math.min(innerWidth / 1920, innerHeight / 1080);
-      stage.style.transform = 'translate(' + (innerWidth - 1920 * s) / 2 + 'px,' +
-        (innerHeight - 1080 * s) / 2 + 'px) scale(' + s + ')';
-    }
-    addEventListener('resize', fit);
-    fit();
+    fitStage(stage);
     apply();
     // 웹폰트가 늦게 로드되면 폭이 바뀌므로 한 번 더 맞춥니다
     if (document.fonts) document.fonts.ready.then(function () {
-      Object.keys(els).forEach(function (id) { els[id].style.fontSize = ''; shrinkToFit(els[id]); });
+      Object.keys(els).forEach(function (id) { var n = els[id].firstChild; n.style.fontSize = ''; shrinkToFit(n); });
     });
   }
 </script>

@@ -2,14 +2,16 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>디맥테마 전쟁 — 트랙리스트</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css" />
 <style>
   /* 배경 이미지는 여기 한 곳에서만 바꾸면 됩니다 */
   :root { --bg: url('https://raw.githubusercontent.com/bbearDev/cisnedjmax/main/5track.png'); }
   html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  body { font-family: 'Pretendard Variable', Pretendard, 'Noto Sans CJK KR', sans-serif; }
   /* 창 비율이 16:9가 아닐 때 남는 여백을 같은 이미지를 흐리게 깔아 채웁니다 */
-  body::before {
+  body.overlay::before {
     content: ''; position: fixed; inset: -60px;
     background: var(--bg) center / cover no-repeat;
     filter: blur(30px) brightness(0.85);
@@ -18,7 +20,6 @@
     position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;
     background: var(--bg) no-repeat 0 0 / 1920px 1080px;
     transform-origin: 0 0;
-    font-family: 'Pretendard Variable', Pretendard, 'Noto Sans CJK KR', sans-serif;
     color: #4a1458;
   }
   .abs { position: absolute; box-sizing: border-box; }
@@ -50,144 +51,404 @@
   .diff { font-size: 17px; font-weight: 700; color: #9a5bb5; }
   .now { border: 5px solid #fff; border-radius: 6px; box-shadow: 0 0 24px 4px rgba(255, 255, 255, 0.85); }
   .label-tag { font-size: 15px; font-weight: 800; color: #9a5bb5; letter-spacing: 0.05em; }
+
+  /* 조작판 (?control) */
+  body.control { background: #1e1b24; color: #eee; font-size: 15px; overflow: auto; }
+  .panel { padding: 12px; max-width: 1000px; margin: 0 auto; }
+  .panel h2 { font-size: 16px; color: #d9c8ee; margin: 22px 0 8px; }
+  .panel h3 { font-size: 15px; margin: 0; }
+  .bar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .panel button {
+    background: #3b3347; color: #eee; border: 1px solid #6b5a80; border-radius: 6px;
+    padding: 6px 10px; font: inherit; cursor: pointer;
+  }
+  .panel button:disabled { opacity: 0.4; cursor: default; }
+  .panel button.on { background: #ffd23f; color: #3a2a00; border-color: #ffd23f; font-weight: 800; }
+  .panel input, .panel select {
+    background: #2b2733; color: #eee; border: 1px solid #555; border-radius: 6px;
+    padding: 6px 8px; font: inherit; min-width: 0;
+  }
+  .tabs { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px; }
+  .tabs button { text-align: left; line-height: 1.35; }
+  .tabs button.sel { outline: 2px solid #c79bff; }
+  .tabs small { color: #b9a6d0; }
+  .onair { color: #ff6b6b; font-weight: 800; font-size: 12px; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border-bottom: 1px solid #3a3444; padding: 6px; text-align: left; vertical-align: middle; }
+  th { font-size: 13px; color: #b9a6d0; font-weight: 600; }
+  td.who { white-space: nowrap; color: #d9c8ee; }
+  .chart { display: block; margin-bottom: 4px; }
+  .chart small { color: #b9a6d0; }
+  .tag { font-size: 11px; border-radius: 4px; padding: 1px 5px; margin-left: 4px; background: #4b3f5c; color: #d9c8ee; }
+  .tag.custom { background: #6b4a00; color: #ffd98a; }
+  .acts { display: flex; gap: 4px; flex-wrap: wrap; }
+  .score { width: 120px; text-align: right; font-variant-numeric: tabular-nums; }
+  .tot { font-variant-numeric: tabular-nums; font-weight: 800; text-align: right; }
+  .tot.lead { color: #ff9a3c; }
+  .hint { font-size: 13px; color: #9a90a8; margin: 6px 0; }
+  .status { font-size: 13px; color: #aaa; margin-left: auto; }
+  .status.ok { color: #7ee08a; }
+  .status.err { color: #ff6b6b; }
+  .rand { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 8px; font-size: 14px; }
+  .rand input { width: 60px; }
+  /* 곡 선택 창 */
+  .dlg { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; justify-content: center; align-items: flex-start; padding: 40px 12px; }
+  .dlg[hidden] { display: none; }
+  .dlg-box { background: #26222d; border: 1px solid #6b5a80; border-radius: 10px; padding: 12px; width: 100%; max-width: 720px; max-height: calc(100vh - 80px); display: flex; flex-direction: column; }
+  .dlg-box .bar input { flex: 1; }
+  #plist { overflow-y: auto; }
+  .song { padding: 8px 0; border-bottom: 1px solid #3a3444; }
+  .song small { color: #9a90a8; }
+  .pats { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+  .pats button { font-size: 13px; padding: 4px 8px; }
 </style>
 </head>
 <body>
-<div class="stage" id="stage"></div>
+<script src="tourney.js"></script>
+
 <script>
-  // ── 트랙리스트 내용 ─────────────────────────────────────────
-  // Sync 위젯으로 쓰면 매치 데이터(선수 이름, 공개된 선곡)를 받아 자동으로 채웁니다.
-  // 데이터가 없을 때(OBS 단독)는 아래 값이나 URL 파라미터를 씁니다.
-  //   track.html?p1=선수A&p2=선수B&t1=곡제목&d1=SC 15&j1=자켓URL&l1=1P 선곡 ...
-  //   (1~3번 곡: t=제목, d=난이도, j=자켓 이미지 URL, l=라벨)
-  var PLAYERS = ['', ''];
-  var SONGS = [
-    { label: '1P 선곡', title: '', diff: '', jacket: '' },
-    { label: 'RANDOM',  title: '', diff: '', jacket: '' },
-    { label: '2P 선곡', title: '', diff: '', jacket: '' }
-  ];
+  var state = normalize(null);
+  var LABELS = ['1P 선곡', 'RANDOM', '2P 선곡'];
 
-  // 5track.png 카드의 측정 좌표: 보라 칸 top 543~706, 흰 칸 706~858
-  var CARD_X = [1094, 1333, 1582], CARD_W = 163;
-  var JACKET = { top: 543, height: 163 }, INFO = { top: 706, height: 152 };
+  if (q.has('control')) {
+    document.body.className = 'control';
+    document.body.innerHTML =
+      '<div class="panel"><div class="bar"><h3>트랙리스트 조작판</h3><span class="status" id="status">연결 중…</span></div>' +
+      '<div id="view"></div></div>' +
+      '<div class="dlg" id="picker" hidden><div class="dlg-box"><div class="bar"><strong id="ptitle"></strong></div>' +
+      '<div class="bar"><input id="pq" placeholder="곡 이름·작곡가 검색"><button id="pclose">닫기</button></div>' +
+      '<div id="plist"></div></div></div>';
+    var statusEl = document.getElementById('status');
+    var view = document.getElementById('view');
+    var SONGS = null;     // V-ARCHIVE 곡 목록 (Firebase songs)
+    var edit = '';        // 조작판에서 편집 중인 경기
+    var pending = false;  // 입력 중이라 미뤄 둔 다시 그리기
 
-  var stage = document.getElementById('stage');
-  var layer = document.createElement('div');
-  stage.appendChild(layer);
-  var q = new URLSearchParams(location.search);
-  function pick(key, fallback) { return q.has(key) ? q.get(key) : fallback; }
-  function box(cls, left, top, width, height) {
-    var el = document.createElement('div');
-    el.className = 'abs ' + cls;
-    if (left != null) { el.style.left = left + 'px'; el.style.top = top + 'px'; }
-    if (width) el.style.width = width + 'px';
-    if (height) el.style.height = height + 'px';
-    layer.appendChild(el);
-    return el;
-  }
-  function add(parent, cls, text) {
-    var el = document.createElement('div');
-    el.className = cls; el.textContent = text;
-    parent.appendChild(el);
-    return el;
-  }
+    function setStatus(t) { statusEl.textContent = t[0]; statusEl.className = 'status ' + (t[1] || ''); }
+    function set(patch) {
+      Object.keys(patch).forEach(function (p) { setPath(state, p, patch[p]); });
+      draw();
+      save(patch).then(function (code) { setStatus(statusText(code)); });
+    }
+    function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : t; return d.innerHTML; }
+    function chartHtml(c) {
+      return c ? '<span class="chart">' + esc(c.n) + ' <small>' + chartDiff(c) + '</small></span>'
+        : '<span class="chart"><small>미정</small></span>';
+    }
+    function name(pid) { return esc(playerName(state, pid)) || '미정'; }
 
-  function render(players, songs) {
-    layer.textContent = '';
-    ['left', 'right'].forEach(function (side, i) {
-      box('player ' + side).textContent = players[i] || '';
-    });
-    songs.forEach(function (song, i) {
-      var x = CARD_X[i];
-      if (song.current) box('now', x - 8, JACKET.top - 8, CARD_W + 16, JACKET.height + INFO.height + 16);
-      var jacket = box('jacket', x, JACKET.top, CARD_W, JACKET.height);
-      if (song.jacket) {
-        var img = document.createElement('img');
-        img.src = song.jacket; img.alt = '';
-        jacket.appendChild(img);
-      } else {
-        jacket.textContent = song.label;
+    // 입력칸을 쓰는 중에는 다시 그리지 않고 입력이 끝난 뒤 그립니다
+    function draw() {
+      var a = document.activeElement;
+      if (a && view.contains(a) && /INPUT|SELECT/.test(a.tagName)) { pending = true; return; }
+      pending = false;
+      render();
+    }
+    view.addEventListener('focusout', function () { setTimeout(function () { if (pending) draw(); }, 0); });
+
+    function render() {
+      var g = derive(state);
+      if (!edit) edit = state.live || 'm1';
+
+      // 경기 선택
+      var html = '<h2>경기 선택</h2><div class="tabs">';
+      MATCHES.forEach(function (m) {
+        html += '<button data-tab="' + m.id + '"' + (m.id === edit ? ' class="sel"' : '') + '>' + m.name +
+          (state.live === m.id ? ' <span class="onair">● 방송 중</span>' : '') +
+          '<br><small>' + name(g[m.id][0]) + ' vs ' + name(g[m.id][1]) + '</small></button>';
+      });
+      html += '</div>';
+
+      // 경기 편집
+      var info = matchInfo(edit), ids = g[edit], m = state.matches[edit];
+      var songs = matchSongs(state, g, edit), lead = leader(state, g, edit);
+      html += '<h2>' + info.name + ' — ' + name(ids[0]) + ' vs ' + name(ids[1]) + '</h2><div class="bar">' +
+        '<button id="live"' + (state.live === edit ? ' class="on" disabled>방송에 표시 중' : '>이 경기를 방송에 표시') + '</button></div>';
+      if (!ids[0] || !ids[1]) html += '<p class="hint">선수가 아직 정해지지 않았습니다. 대진표 조작판에서 앞 경기 승자를 고르면 채워집니다.</p>';
+      html += '<div class="scroll"><table><tr><th>곡</th><th>보면</th><th>' + name(ids[0]) + ' 점수</th><th>' +
+        name(ids[1]) + ' 점수</th><th>현재 곡</th></tr>';
+      songs.forEach(function (x, i) {
+        var acts = '';
+        if (x.key === 'rnd') {
+          acts = '<button data-act="draw">' + (x.chart ? '다시 뽑기' : '뽑기') + '</button>' +
+            '<button data-act="rndpick">직접 선택</button>' + (x.chart ? '<button data-act="rndclear">비우기</button>' : '');
+        } else if (x.key) {
+          acts = '<button data-act="pick" data-pid="' + x.key + '">변경</button>' +
+            (x.custom ? '<button data-act="unpick" data-pid="' + x.key + '">사전 등록으로</button>' : '');
+        }
+        var tag = x.key === 'rnd' || !x.chart ? '' : x.custom ? '<span class="tag custom">이 경기만 변경</span>' : '<span class="tag">사전 등록</span>';
+        html += '<tr><td class="who">' + LABELS[i] + (i === 1 ? '' : '<br><small>' + name(x.key) + '</small>') + '</td>' +
+          '<td>' + chartHtml(x.chart).replace('</span>', tag + '</span>') + '<div class="acts">' + acts + '</div></td>';
+        ids.forEach(function (pid) {
+          var v = pid && m.score[pid] && typeof m.score[pid][x.key] === 'number' ? fmtScore(m.score[pid][x.key]) : '';
+          html += '<td><input class="score" inputmode="numeric" data-pid="' + pid + '" data-song="' + x.key + '" value="' + v + '"' +
+            (pid && x.key ? '' : ' disabled') + '></td>';
+        });
+        html += '<td><button data-act="cur" data-song="' + x.key + '"' + (x.chart ? '' : ' disabled') +
+          (x.chart && m.cur === x.key ? ' class="on">재생 중' : '>지정') + '</button></td></tr>';
+      });
+      html += '<tr><td colspan="2" class="who">합계 (대진표에 표시)</td>';
+      ids.forEach(function (pid) {
+        html += '<td class="tot' + (pid && lead === pid ? ' lead' : '') + '">' + fmtScore(total(state, g, edit, pid)) + '</td>';
+      });
+      html += '<td></td></tr></table></div>';
+
+      var r = state.rand;
+      html += '<div class="rand">랜덤 조건: <select data-rand="b">' + BUTTONS.map(function (b) {
+        return '<option' + (r.b === b ? ' selected' : '') + '>' + b + '</option>';
+      }).join('') + '</select><select data-rand="d"><option value="">모든 난이도</option>' + DIFFS.map(function (d) {
+        return '<option' + (r.d === d ? ' selected' : '') + '>' + d + '</option>';
+      }).join('') + '</select> 레벨 <input type="number" min="1" max="15" data-rand="min" value="' + r.min + '"> ~ ' +
+        '<input type="number" min="1" max="15" data-rand="max" value="' + r.max + '">' +
+        '<span class="hint">같은 경기에 이미 들어간 곡은 빼고 뽑습니다.</span></div>';
+
+      // 선수·자선곡 사전 등록
+      var pids = Object.keys(state.players).sort(function (a, b) { return state.players[a].n - state.players[b].n; });
+      html += '<h2>선수·자선곡 등록</h2><p class="hint">여기 등록한 선수를 대진표 조작판 6강 칸에서 고릅니다. ' +
+        '경기를 고르면 각 선수의 해당 라운드 자선곡이 자동으로 들어갑니다.</p><div class="scroll"><table><tr><th>선수</th>';
+      Object.keys(PRE_NAMES).forEach(function (k) { html += '<th>' + PRE_NAMES[k] + '</th>'; });
+      html += '<th></th></tr>';
+      pids.forEach(function (pid) {
+        var p = state.players[pid];
+        html += '<tr><td><input data-name="' + pid + '" value="' + esc(p.name) + '"></td>';
+        Object.keys(PRE_NAMES).forEach(function (k) {
+          html += '<td>' + chartHtml(p.picks[k]) + '<div class="acts"><button data-act="prepick" data-pid="' + pid + '" data-pre="' + k + '">선택</button>' +
+            (p.picks[k] ? '<button data-act="preclear" data-pid="' + pid + '" data-pre="' + k + '">비우기</button>' : '') + '</div></td>';
+        });
+        var placed = state.r1.indexOf(pid) >= 0;
+        html += '<td><button data-act="del" data-pid="' + pid + '"' + (placed ? ' disabled title="대진표에 배치된 선수는 먼저 대진표에서 빼야 합니다"' : '') + '>삭제</button></td></tr>';
+      });
+      html += '</table></div><div class="bar" style="margin-top:8px"><input id="newName" placeholder="선수 이름">' +
+        '<button id="add">선수 추가</button></div>';
+      view.innerHTML = html;
+      bind(g);
+    }
+
+    function bind(g) {
+      var base = 'matches/' + edit + '/';
+      view.querySelectorAll('[data-tab]').forEach(function (b) {
+        b.onclick = function () { edit = b.dataset.tab; render(); };
+      });
+      document.getElementById('live').onclick = function () { set({ live: edit }); };
+      view.querySelectorAll('input.score').forEach(function (el) {
+        el.onchange = function () {
+          var digits = el.value.replace(/[^0-9]/g, ''), p = {};
+          p[base + 'score/' + el.dataset.pid + '/' + el.dataset.song] = digits ? +digits : null;
+          set(p);
+        };
+        el.onkeydown = function (e) { if (e.key === 'Enter') el.blur(); };
+      });
+      view.querySelectorAll('[data-rand]').forEach(function (el) {
+        el.onchange = function () {
+          var k = el.dataset.rand, v = el.value, p = {};
+          if (k === 'min' || k === 'max') v = Math.max(1, Math.min(15, +v || 1));
+          p['rand/' + k] = v;
+          set(p);
+        };
+      });
+      view.querySelectorAll('input[data-name]').forEach(function (el) {
+        el.onchange = function () {
+          var v = el.value.trim(), p = {};
+          if (!v) { el.value = state.players[el.dataset.name].name; return; }
+          p['players/' + el.dataset.name + '/name'] = v;
+          set(p);
+        };
+        el.onkeydown = function (e) { if (e.key === 'Enter') el.blur(); };
+      });
+      var nameEl = document.getElementById('newName');
+      function addPlayer() {
+        var v = nameEl.value.trim(), p = {};
+        if (!v) return;
+        nameEl.value = '';
+        p['players/p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5)] = { name: v, n: Date.now() };
+        set(p);
       }
-      var info = box('info', x, INFO.top, CARD_W, INFO.height);
-      if (song.jacket && song.label) add(info, 'label-tag', song.label);
-      add(info, 'title', song.title);
-      if (song.diff) add(info, 'diff', song.diff);
-    });
-    shrinkAll();
-  }
+      document.getElementById('add').onclick = addPlayer;
+      nameEl.onkeydown = function (e) { if (e.key === 'Enter') addPlayer(); };
 
-  function manualSongs() {
-    return SONGS.map(function (song, i) {
-      var n = i + 1;
-      return { label: pick('l' + n, song.label), title: pick('t' + n, song.title),
-               diff: pick('d' + n, song.diff), jacket: pick('j' + n, song.jacket) };
-    });
-  }
+      view.querySelectorAll('button[data-act]').forEach(function (b) {
+        var d = b.dataset;
+        b.onclick = function () {
+          var p = {};
+          switch (d.act) {
+            case 'draw': return drawRandom(g);
+            case 'rndpick': return openPicker('랜덤곡 직접 선택', function (c) { set(obj(base + 'rnd', c)); });
+            case 'rndclear': return set(obj(base + 'rnd', null));
+            case 'pick': return openPicker(playerName(state, d.pid) + ' 자선곡 (' + matchInfo(edit).name + '에만 적용)',
+              function (c) { set(obj(base + 'pick/' + d.pid, c)); });
+            case 'unpick': return set(obj(base + 'pick/' + d.pid, null));
+            case 'cur': return set(obj(base + 'cur', state.matches[edit].cur === d.song ? null : d.song));
+            case 'prepick': return openPicker(playerName(state, d.pid) + ' — ' + PRE_NAMES[d.pre] + ' 자선곡',
+              function (c) { set(obj('players/' + d.pid + '/picks/' + d.pre, c)); });
+            case 'preclear': return set(obj('players/' + d.pid + '/picks/' + d.pre, null));
+            case 'del':
+              if (!confirm(playerName(state, d.pid) + ' 선수를 삭제할까요? 사전 등록한 자선곡도 함께 지워집니다.')) return;
+              return set(obj('players/' + d.pid, null));
+          }
+        };
+      });
+    }
+    function obj(k, v) { var o = {}; o[k] = v; return o; }
 
-  // Sync WidgetData → 화면 (https://sync.havana.moe/widget-guide)
-  // 블라인드 곡은 데이터에 오지 않으므로 공개된 픽만 순서대로 채워집니다.
-  function onData(d) {
-    if (!d || !d.match) return;
-    var players = d.match.players.map(function (p) { return p.name; });
-    var picks = d.picks.filter(function (p) { return p.kind === 'pick'; })
-      .sort(function (a, b) { return a.order - b.order; });
-    var songs = SONGS.map(function (fallback, i) {
-      var p = picks[i];
-      if (!p) return { label: fallback.label, title: '', diff: '', jacket: '' };
-      var label = typeof p.side === 'number' ? (p.side + 1) + 'P 선곡'
-        : p.side === 'random' ? 'RANDOM' : '지정곡';
-      return {
-        label: label,
-        title: p.song.title,
-        diff: [p.song.difficulty, p.song.level].filter(Boolean).join(' '),
-        jacket: p.song.jacketUrl || '',
-        current: !!(d.current && d.current.order === p.order)
-      };
-    });
-    render(players, songs);
-  }
+    // 조건에 맞는 보면 중 하나를 무작위로 고릅니다 (같은 경기에 이미 들어간 곡 제외)
+    function drawRandom(g) {
+      if (!SONGS) return alert('곡 목록을 불러오는 중입니다. 잠시 후 다시 눌러 주세요.');
+      var f = state.rand, used = {}, pool = [];
+      matchSongs(state, g, edit).forEach(function (x) { if (x.chart) used[x.chart.s] = true; });
+      SONGS.forEach(function (song) {
+        if (used[song.title]) return;
+        var pats = (song.patterns || {})[f.b] || {};
+        Object.keys(pats).forEach(function (d) {
+          var l = pats[d].level;
+          if ((!f.d || f.d === d) && l >= f.min && l <= f.max) pool.push({ s: song.title, n: song.name, b: f.b, d: d, l: l });
+        });
+      });
+      if (!pool.length) return alert('조건에 맞는 보면이 없습니다. 랜덤 조건을 바꿔 주세요.');
+      set(obj('matches/' + edit + '/rnd', pool[Math.floor(Math.random() * pool.length)]));
+    }
 
-  render([pick('p1', PLAYERS[0]), pick('p2', PLAYERS[1])], manualSongs());
-  if (window.RT) {
-    RT.onData(onData);
-  } else {
-    addEventListener('message', function (e) {
-      var msg = e.data;
-      if (e.source !== parent || !msg || msg.source !== 'rhythm-tourney' || msg.type !== 'data') return;
-      onData(msg.data);
-    });
+    // 곡 선택 창: 곡을 검색해 보면(버튼·난이도)을 고릅니다
+    var picker = document.getElementById('picker'), pq = document.getElementById('pq');
+    var plist = document.getElementById('plist'), pickerCb = null;
+    function openPicker(title, cb) {
+      if (!SONGS) return alert('곡 목록을 불러오는 중입니다. 잠시 후 다시 눌러 주세요.');
+      pickerCb = cb;
+      document.getElementById('ptitle').textContent = title;
+      pq.value = '';
+      search();
+      picker.hidden = false;
+      pq.focus();
+    }
+    function closePicker() { picker.hidden = true; pickerCb = null; }
+    function search() {
+      var t = pq.value.trim().toLowerCase();
+      if (!t) { plist.innerHTML = '<p class="hint">곡 이름이나 작곡가를 입력하세요.</p>'; return; }
+      var found = SONGS.filter(function (s) {
+        return (s.name || '').toLowerCase().indexOf(t) >= 0 || (s.composer || '').toLowerCase().indexOf(t) >= 0;
+      }).slice(0, 40);
+      plist.innerHTML = found.length ? found.map(function (s) {
+        var pats = '';
+        BUTTONS.forEach(function (b) {
+          DIFFS.forEach(function (d) {
+            var p = s.patterns && s.patterns[b] && s.patterns[b][d];
+            if (p) pats += '<button data-s="' + s.title + '" data-b="' + b + '" data-d="' + d + '">' + b + ' ' + d + ' ' + p.level + '</button>';
+          });
+        });
+        return '<div class="song">' + esc(s.name) + ' <small>' + esc(s.composer) + ' · ' + esc(s.dlc) + '</small><div class="pats">' + pats + '</div></div>';
+      }).join('') : '<p class="hint">검색 결과가 없습니다.</p>';
+    }
+    pq.oninput = search;
+    plist.onclick = function (e) {
+      var b = e.target.closest('button[data-s]');
+      if (!b) return;
+      var s = SONGS.filter(function (x) { return String(x.title) === b.dataset.s; })[0];
+      var cb = pickerCb;
+      closePicker();
+      cb({ s: s.title, n: s.name, b: b.dataset.b, d: b.dataset.d, l: s.patterns[b.dataset.b][b.dataset.d].level });
+    };
+    document.getElementById('pclose').onclick = closePicker;
+    picker.onclick = function (e) { if (e.target === picker) closePicker(); };
+    addEventListener('keydown', function (e) { if (e.key === 'Escape' && !picker.hidden) closePicker(); });
+
+    fetch(DB_URL + '/songs.json').then(function (r) { return r.json(); }).then(function (d) {
+      SONGS = (Array.isArray(d) ? d : Object.keys(d || {}).map(function (k) { return d[k]; })).filter(Boolean);
+    }).catch(function () { setStatus(['곡 목록을 불러오지 못했습니다', 'err']); });
+
+    if (!KEY) setStatus(['주소에 &key= 가 없습니다', 'err']);
+    else subscribe(function (s) { state = s; draw(); },
+      function (ok) { setStatus(ok ? ['실시간 연결됨', 'ok'] : ['재연결 중…', 'err']); });
+    render();
+  }
+</script>
+
+<script>
+  if (!q.has('control')) {
+    document.body.className = 'overlay';
+    var stage = document.createElement('div');
+    stage.className = 'stage';
+    document.body.appendChild(stage);
+    var layer = document.createElement('div');
+    stage.appendChild(layer);
+
+    // 5track.png 카드의 측정 좌표: 보라 칸 top 543~706, 흰 칸 706~858
+    var CARD_X = [1094, 1333, 1582], CARD_W = 163;
+    var JACKET = { top: 543, height: 163 }, INFO = { top: 706, height: 152 };
+
+    function box(cls, left, top, width, height) {
+      var el = document.createElement('div');
+      el.className = 'abs ' + cls;
+      if (left != null) { el.style.left = left + 'px'; el.style.top = top + 'px'; }
+      if (width) el.style.width = width + 'px';
+      if (height) el.style.height = height + 'px';
+      layer.appendChild(el);
+      return el;
+    }
+    function add(parent, cls, text) {
+      var el = document.createElement('div');
+      el.className = cls; el.textContent = text;
+      parent.appendChild(el);
+      return el;
+    }
+
+    // 조작판에서 '방송에 표시'한 경기를 그립니다
+    function render() {
+      layer.textContent = '';
+      var id = state.live, g = derive(state);
+      var ids = id ? g[id] : ['', ''];
+      var songs = id ? matchSongs(state, g, id) : [{}, {}, {}];
+      ['left', 'right'].forEach(function (side, i) {
+        box('player ' + side).textContent = playerName(state, ids[i]);
+      });
+      songs.forEach(function (x, i) {
+        var c = x.chart, label = LABELS[i], left = CARD_X[i];
+        if (c && state.matches[id].cur === x.key) box('now', left - 8, JACKET.top - 8, CARD_W + 16, JACKET.height + INFO.height + 16);
+        var jacket = box('jacket', left, JACKET.top, CARD_W, JACKET.height);
+        var info = box('info', left, INFO.top, CARD_W, INFO.height);
+        if (c) {
+          var img = document.createElement('img');
+          img.src = jacketUrl(c); img.alt = '';
+          // 자켓을 못 불러오면 라벨만 표시합니다
+          img.onerror = function () { jacket.textContent = label; info.removeChild(tag); };
+          jacket.appendChild(img);
+          var tag = add(info, 'label-tag', label);
+          add(info, 'title', c.n);
+          add(info, 'diff', chartDiff(c));
+        } else {
+          jacket.textContent = label;
+          add(info, 'title', '');
+        }
+      });
+      shrinkAll();
+    }
+
+    // 넘치는 글자는 칸에 들어갈 때까지 줄입니다
+    function shrink(el, min) {
+      var size = parseFloat(getComputedStyle(el).fontSize);
+      while ((el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight) && size > min) {
+        size -= 1; el.style.fontSize = size + 'px';
+      }
+    }
+    function shrinkInfo(info) {
+      var title = info.querySelector('.title');
+      var size = 22;
+      title.style.fontSize = '';
+      while (info.scrollHeight > info.clientHeight && size > 12) {
+        size -= 1; title.style.fontSize = size + 'px';
+      }
+    }
+    function shrinkAll() {
+      document.querySelectorAll('.player').forEach(function (el) { el.style.fontSize = ''; shrink(el, 20); });
+      document.querySelectorAll('.info').forEach(shrinkInfo);
+    }
+    if (document.fonts) document.fonts.ready.then(shrinkAll);
+
+    subscribe(function (s) { state = s; render(); });
+    // Sync 외부 URL 위젯 규약 (https://sync.havana.moe/widget-guide)
     if (parent !== window) parent.postMessage({ source: 'rhythm-tourney-widget', type: 'ready' }, '*');
+    fitStage(stage);
+    render();
   }
-
-  // 넘치는 글자는 칸에 들어갈 때까지 줄입니다
-  function shrink(el, min) {
-    var size = parseFloat(getComputedStyle(el).fontSize);
-    while ((el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight) && size > min) {
-      size -= 1; el.style.fontSize = size + 'px';
-    }
-  }
-  function shrinkInfo(info) {
-    var title = info.querySelector('.title');
-    var size = 22;
-    title.style.fontSize = '';
-    while (info.scrollHeight > info.clientHeight && size > 12) {
-      size -= 1; title.style.fontSize = size + 'px';
-    }
-  }
-  function shrinkAll() {
-    document.querySelectorAll('.player').forEach(function (el) { el.style.fontSize = ''; shrink(el, 20); });
-    document.querySelectorAll('.info').forEach(shrinkInfo);
-  }
-  if (document.fonts) document.fonts.ready.then(shrinkAll);
-
-  // 1920×1080 무대를 잘리지 않게 창에 맞추고 가운데 정렬합니다 (남는 곳은 body::before가 채움)
-  function fit() {
-    var s = Math.min(innerWidth / 1920, innerHeight / 1080);
-    stage.style.transform = 'translate(' + (innerWidth - 1920 * s) / 2 + 'px,' +
-      (innerHeight - 1080 * s) / 2 + 'px) scale(' + s + ')';
-  }
-  addEventListener('resize', fit);
-  fit();
 </script>
 </body>
 </html>
