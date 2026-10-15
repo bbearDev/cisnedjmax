@@ -65,6 +65,10 @@
   .status { font-size: 13px; color: #aaa; margin-left: auto; }
   .status.ok { color: #7ee08a; }
   .status.err { color: #ff6b6b; }
+  .panel h3.title { margin: 0; font-size: 18px; }
+  .slotname { background: #2b2733; border: 1px solid #555; border-radius: 6px; padding: 8px; }
+  .ro .match button:disabled { opacity: 1; cursor: default; }
+  .ro .match button:disabled:not(.win) { opacity: 0.85; }
 </style>
 </head>
 <body>
@@ -73,10 +77,11 @@
 <script>
   var state = normalize(null);
 
-  if (q.has('control')) {
-    document.body.className = 'control';
-    document.body.innerHTML = '<div class="panel"><div class="bar"><button id="clearWin">승자 전체 해제</button>' +
-      '<button id="clearAll">전체 초기화</button><span class="status" id="status">연결 중…</span></div>' +
+  if (CONSOLE) {
+    document.body.className = 'control' + (VIEW ? ' ro' : '');
+    document.body.innerHTML = '<div class="panel"><div class="bar">' + (VIEW ? '<h3 class="title">대진표 (읽기 전용)</h3>' :
+      '<button id="clearWin">승자 전체 해제</button><button id="clearAll">전체 초기화</button>') +
+      '<span class="status" id="status">연결 중…</span></div>' +
       '<div id="view"></div></div>';
     var statusEl = document.getElementById('status');
     var view = document.getElementById('view');
@@ -84,6 +89,7 @@
 
     function setStatus(t) { statusEl.textContent = t[0]; statusEl.className = 'status ' + (t[1] || ''); }
     function set(patch) {
+      if (VIEW) return;
       Object.keys(patch).forEach(function (p) { setPath(state, p, patch[p]); });
       draw();
       save(patch).then(function (code) { setStatus(statusText(code)); });
@@ -95,6 +101,7 @@
       var ids = Object.keys(state.players).sort(function (a, b) { return state.players[a].n - state.players[b].n; });
       var html = '<div class="round"><h3>6강 선수 배치 (맨 아래 칸 왼쪽부터)</h3><div class="cells">';
       state.r1.forEach(function (cur, i) {
+        if (VIEW) { html += '<div class="slotname">' + (i + 1) + '번 칸 — ' + (esc(playerName(state, cur)) || '비움') + '</div>'; return; }
         html += '<select data-slot="' + i + '"><option value="">' + (i + 1) + '번 칸 — 비움</option>';
         ids.forEach(function (id) {
           // 다른 칸에 이미 배치된 선수는 고를 수 없습니다
@@ -104,16 +111,16 @@
         });
         html += '</select>';
       });
-      html += '</div><p class="hint">선수 등록·이름 수정은 트랙리스트 조작판(track.html?control)에서 합니다.' +
-        (ids.length ? '' : ' 아직 등록된 선수가 없습니다.') + '</p></div>';
+      html += '</div>' + (VIEW ? '' : '<p class="hint">선수 등록·이름 수정은 트랙리스트 조작판(track.html?control)에서 합니다.' +
+        (ids.length ? '' : ' 아직 등록된 선수가 없습니다.') + '</p>') + '</div>';
 
-      html += '<div class="round"><h3>경기 결과 — 승자를 누르면 다음 라운드로 진출 (다시 누르면 취소)</h3>';
+      html += '<div class="round"><h3>' + (VIEW ? '경기 결과 (노란 칸 = 승자)' : '경기 결과 — 승자를 누르면 다음 라운드로 진출 (다시 누르면 취소)') + '</h3>';
       MATCHES.forEach(function (m) {
         var lead = leader(state, g, m.id);
         html += '<div class="match"><span class="label">' + m.name + '</span>';
         g[m.id].forEach(function (pid) {
           var t = total(state, g, m.id, pid);
-          html += '<button data-match="' + m.id + '" data-pid="' + pid + '"' + (pid ? '' : ' disabled') +
+          html += '<button data-match="' + m.id + '" data-pid="' + pid + '"' + (pid && !VIEW ? '' : ' disabled') +
             (pid && g.win[m.id] === pid ? ' class="win"' : '') + '><span>' + (esc(playerName(state, pid)) || '미정') +
             '</span><span class="sum' + (pid && lead === pid ? ' lead' : '') + '">' + fmtScore(t) + '</span></button>';
         });
@@ -137,7 +144,7 @@
 
     // 이전 방식(칸에 이름 직접 입력)으로 저장된 6강 이름은 선수로 등록해 옮깁니다
     function migrate() {
-      if (migrated) return;
+      if (migrated || VIEW) return;
       migrated = true;
       if (Object.keys(state.players).length) return;
       var patch = {}, any = false;
@@ -153,12 +160,12 @@
       set(patch);
     }
 
-    document.getElementById('clearWin').onclick = function () {
+    if (!VIEW) document.getElementById('clearWin').onclick = function () {
       var p = {};
       MATCHES.forEach(function (m) { p['matches/' + m.id + '/win'] = null; });
       set(p);
     };
-    document.getElementById('clearAll').onclick = function () {
+    if (!VIEW) document.getElementById('clearAll').onclick = function () {
       if (!confirm('6강 배치와 승자를 모두 지울까요? (선수 등록·곡·점수는 그대로 남습니다)')) return;
       var p = {};
       for (var i = 0; i < 6; i++) p['r1/' + i] = '';
@@ -166,7 +173,7 @@
       set(p);
     };
 
-    if (!KEY) setStatus(['주소에 &key= 가 없습니다', 'err']);
+    if (!KEY && !VIEW) setStatus(['주소에 &key= 가 없습니다', 'err']);
     else subscribe(function (s) { state = s; draw(); migrate(); },
       function (ok) { setStatus(ok ? ['실시간 연결됨', 'ok'] : ['재연결 중…', 'err']); });
     draw();
@@ -183,7 +190,7 @@
     r4: [[825, 466, 257, 92]]
   };
 
-  if (!q.has('control')) {
+  if (!CONSOLE) {
     document.body.className = 'overlay';
     var stage = document.createElement('div');
     stage.className = 'stage';

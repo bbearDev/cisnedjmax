@@ -24,6 +24,9 @@ DB_URL = (q.get('db') || DB_URL).replace(/\/$/, '');
 ROOM = q.get('room') || ROOM;
 var ROOT_URL = DB_URL + '/bracket/' + encodeURIComponent(ROOM);
 var KEY = q.get('key') || '';
+// ?view = 조작판과 같은 화면을 읽기 전용으로 (비밀키 없이 열람, 저장 안 함)
+var VIEW = q.has('view') && !q.has('control');
+var CONSOLE = q.has('control') || VIEW;
 
 // pre: 이 경기에서 쓰는 사전 등록 자선곡 칸
 var MATCHES = [

@@ -85,6 +85,8 @@
   .acts { display: flex; gap: 4px; flex-wrap: wrap; }
   .score { width: 120px; text-align: right; font-variant-numeric: tabular-nums; }
   .tot { font-variant-numeric: tabular-nums; font-weight: 800; text-align: right; }
+  .num { font-variant-numeric: tabular-nums; text-align: right; }
+  .playing { color: #7ee08a; font-weight: 800; white-space: nowrap; }
   .tot.lead { color: #ff9a3c; }
   .hint { font-size: 13px; color: #9a90a8; margin: 6px 0; }
   .status { font-size: 13px; color: #aaa; margin-left: auto; }
@@ -111,10 +113,10 @@
   var state = normalize(null);
   var LABELS = ['1P 선곡', 'RANDOM', '2P 선곡'];
 
-  if (q.has('control')) {
+  if (CONSOLE) {
     document.body.className = 'control';
     document.body.innerHTML =
-      '<div class="panel"><div class="bar"><h3>트랙리스트 조작판</h3><span class="status" id="status">연결 중…</span></div>' +
+      '<div class="panel"><div class="bar"><h3>' + (VIEW ? '트랙리스트 (읽기 전용)' : '트랙리스트 조작판') + '</h3><span class="status" id="status">연결 중…</span></div>' +
       '<div id="view"></div></div>' +
       '<div class="dlg" id="picker" hidden><div class="dlg-box"><div class="bar"><strong id="ptitle"></strong></div>' +
       '<div class="bar"><input id="pq" placeholder="곡 이름·작곡가 검색"><button id="pclose">닫기</button></div>' +
@@ -127,6 +129,7 @@
 
     function setStatus(t) { statusEl.textContent = t[0]; statusEl.className = 'status ' + (t[1] || ''); }
     function set(patch) {
+      if (VIEW) return;
       Object.keys(patch).forEach(function (p) { setPath(state, p, patch[p]); });
       draw();
       save(patch).then(function (code) { setStatus(statusText(code)); });
@@ -163,9 +166,9 @@
       // 경기 편집
       var info = matchInfo(edit), ids = g[edit], m = state.matches[edit];
       var songs = matchSongs(state, g, edit), lead = leader(state, g, edit);
-      html += '<h2>' + info.name + ' — ' + name(ids[0]) + ' vs ' + name(ids[1]) + '</h2><div class="bar">' +
-        '<button id="live"' + (state.live === edit ? ' class="on" disabled>방송에 표시 중' : '>이 경기를 방송에 표시') + '</button></div>';
-      if (!ids[0] || !ids[1]) html += '<p class="hint">선수가 아직 정해지지 않았습니다. 대진표 조작판에서 앞 경기 승자를 고르면 채워집니다.</p>';
+      html += '<h2>' + info.name + ' — ' + name(ids[0]) + ' vs ' + name(ids[1]) + '</h2>' + (VIEW ? '' : '<div class="bar">' +
+        '<button id="live"' + (state.live === edit ? ' class="on" disabled>방송에 표시 중' : '>이 경기를 방송에 표시') + '</button></div>');
+      if (!ids[0] || !ids[1]) html += '<p class="hint">선수가 아직 정해지지 않았습니다.' + (VIEW ? '' : ' 대진표 조작판에서 앞 경기 승자를 고르면 채워집니다.') + '</p>';
       html += '<div class="scroll"><table><tr><th>곡</th><th>보면</th><th>' + name(ids[0]) + ' 점수</th><th>' +
         name(ids[1]) + ' 점수</th><th>현재 곡</th></tr>';
       songs.forEach(function (x, i) {
@@ -177,16 +180,20 @@
           acts = '<button data-act="pick" data-pid="' + x.key + '">변경</button>' +
             (x.custom ? '<button data-act="unpick" data-pid="' + x.key + '">사전 등록으로</button>' : '');
         }
+        if (VIEW) acts = '';
         var tag = x.key === 'rnd' || !x.chart ? '' : x.custom ? '<span class="tag custom">이 경기만 변경</span>' : '<span class="tag">사전 등록</span>';
         html += '<tr><td class="who">' + LABELS[i] + (i === 1 ? '' : '<br><small>' + name(x.key) + '</small>') + '</td>' +
           '<td>' + chartHtml(x.chart).replace('</span>', tag + '</span>') + '<div class="acts">' + acts + '</div></td>';
         ids.forEach(function (pid) {
           var v = pid && m.score[pid] && typeof m.score[pid][x.key] === 'number' ? fmtScore(m.score[pid][x.key]) : '';
-          html += '<td><input class="score" inputmode="numeric" data-pid="' + pid + '" data-song="' + x.key + '" value="' + v + '"' +
+          html += VIEW ? '<td class="num">' + v + '</td>' :
+            '<td><input class="score" inputmode="numeric" data-pid="' + pid + '" data-song="' + x.key + '" value="' + v + '"' +
             (pid && x.key ? '' : ' disabled') + '></td>';
         });
-        html += '<td><button data-act="cur" data-song="' + x.key + '"' + (x.chart ? '' : ' disabled') +
-          (x.chart && m.cur === x.key ? ' class="on">재생 중' : '>지정') + '</button></td></tr>';
+        var playing = x.chart && m.cur === x.key;
+        html += '<td>' + (VIEW ? (playing ? '<span class="playing">▶ 재생 중</span>' : '') :
+          '<button data-act="cur" data-song="' + x.key + '"' + (x.chart ? '' : ' disabled') +
+          (playing ? ' class="on">재생 중' : '>지정') + '</button>') + '</td></tr>';
       });
       html += '<tr><td colspan="2" class="who">합계 (대진표에 표시)</td>';
       ids.forEach(function (pid) {
@@ -195,7 +202,9 @@
       html += '<td></td></tr></table></div>';
 
       var r = state.rand;
-      html += '<div class="rand">랜덤 조건: <select data-rand="b"><option value="ALL"' + (r.b === 'ALL' ? ' selected' : '') + '>전체</option>' + BUTTONS.map(function (b) {
+      if (VIEW) html += '<div class="rand">랜덤 조건: ' + (r.b === 'ALL' ? '전체' : r.b) + ' · ' + (r.d || '모든 난이도') +
+        ' · 레벨 ' + r.min + ' ~ ' + r.max + '</div>';
+      else html += '<div class="rand">랜덤 조건: <select data-rand="b"><option value="ALL"' + (r.b === 'ALL' ? ' selected' : '') + '>전체</option>' + BUTTONS.map(function (b) {
         return '<option' + (r.b === b ? ' selected' : '') + '>' + b + '</option>';
       }).join('') + '</select><select data-rand="d"><option value="">모든 난이도</option>' + DIFFS.map(function (d) {
         return '<option' + (r.d === d ? ' selected' : '') + '>' + d + '</option>';
@@ -205,31 +214,36 @@
 
       // 선수·자선곡 사전 등록
       var pids = Object.keys(state.players).sort(function (a, b) { return state.players[a].n - state.players[b].n; });
-      html += '<h2>선수·자선곡 등록</h2><p class="hint">여기 등록한 선수를 대진표 조작판 6강 칸에서 고릅니다. ' +
-        '경기를 고르면 각 선수의 해당 라운드 자선곡이 자동으로 들어갑니다.</p><div class="scroll"><table><tr><th>선수</th>';
+      html += '<h2>' + (VIEW ? '선수·자선곡' : '선수·자선곡 등록') + '</h2>' + (VIEW ? '' : '<p class="hint">여기 등록한 선수를 대진표 조작판 6강 칸에서 고릅니다. ' +
+        '경기를 고르면 각 선수의 해당 라운드 자선곡이 자동으로 들어갑니다.</p>') + '<div class="scroll"><table><tr><th>선수</th>';
       Object.keys(PRE_NAMES).forEach(function (k) { html += '<th>' + PRE_NAMES[k] + '</th>'; });
-      html += '<th></th></tr>';
+      html += (VIEW ? '' : '<th></th>') + '</tr>';
       pids.forEach(function (pid) {
         var p = state.players[pid];
-        html += '<tr><td><input data-name="' + pid + '" value="' + esc(p.name) + '"></td>';
+        html += '<tr><td>' + (VIEW ? '<strong>' + esc(p.name) + '</strong>' : '<input data-name="' + pid + '" value="' + esc(p.name) + '">') + '</td>';
         Object.keys(PRE_NAMES).forEach(function (k) {
+          if (VIEW) { html += '<td>' + chartHtml(p.picks[k]) + '</td>'; return; }
           html += '<td>' + chartHtml(p.picks[k]) + '<div class="acts"><button data-act="prepick" data-pid="' + pid + '" data-pre="' + k + '">선택</button>' +
             (p.picks[k] ? '<button data-act="preclear" data-pid="' + pid + '" data-pre="' + k + '">비우기</button>' : '') + '</div></td>';
         });
+        if (VIEW) { html += '</tr>'; return; }
         var placed = state.r1.indexOf(pid) >= 0;
         html += '<td><button data-act="del" data-pid="' + pid + '"' + (placed ? ' disabled title="대진표에 배치된 선수는 먼저 대진표에서 빼야 합니다"' : '') + '>삭제</button></td></tr>';
       });
-      html += '</table></div><div class="bar" style="margin-top:8px"><input id="newName" placeholder="선수 이름">' +
-        '<button id="add">선수 추가</button></div>';
+      html += '</table></div>' + (VIEW ? '' : '<div class="bar" style="margin-top:8px"><input id="newName" placeholder="선수 이름">' +
+        '<button id="add">선수 추가</button></div>');
       view.innerHTML = html;
-      bind(g);
+      if (VIEW) bindTabs(); else bind(g);
     }
 
-    function bind(g) {
-      var base = 'matches/' + edit + '/';
+    function bindTabs() {
       view.querySelectorAll('[data-tab]').forEach(function (b) {
         b.onclick = function () { edit = b.dataset.tab; render(); };
       });
+    }
+    function bind(g) {
+      var base = 'matches/' + edit + '/';
+      bindTabs();
       document.getElementById('live').onclick = function () { set({ live: edit }); };
       view.querySelectorAll('input.score').forEach(function (el) {
         el.onchange = function () {
@@ -354,11 +368,11 @@
     picker.onclick = function (e) { if (e.target === picker) closePicker(); };
     addEventListener('keydown', function (e) { if (e.key === 'Escape' && !picker.hidden) closePicker(); });
 
-    fetch(DB_URL + '/songs.json').then(function (r) { return r.json(); }).then(function (d) {
+    if (!VIEW) fetch(DB_URL + '/songs.json').then(function (r) { return r.json(); }).then(function (d) {
       SONGS = (Array.isArray(d) ? d : Object.keys(d || {}).map(function (k) { return d[k]; })).filter(Boolean);
     }).catch(function () { setStatus(['곡 목록을 불러오지 못했습니다', 'err']); });
 
-    if (!KEY) setStatus(['주소에 &key= 가 없습니다', 'err']);
+    if (!KEY && !VIEW) setStatus(['주소에 &key= 가 없습니다', 'err']);
     else subscribe(function (s) { state = s; draw(); },
       function (ok) { setStatus(ok ? ['실시간 연결됨', 'ok'] : ['재연결 중…', 'err']); });
     render();
@@ -366,7 +380,7 @@
 </script>
 
 <script>
-  if (!q.has('control')) {
+  if (!CONSOLE) {
     document.body.className = 'overlay';
     var stage = document.createElement('div');
     stage.className = 'stage';

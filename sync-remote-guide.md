@@ -270,6 +270,19 @@ https://bbeardev.github.io/cisnedjmax/track.html?control&key=여기에비밀키
 
 ---
 
+## 9. 읽기 전용 페이지 (`?view`)
+
+선수·스태프에게 진행 상황을 보여 줄 때 씁니다. 조작판과 같은 화면이 실시간으로 바뀌지만, 입력칸과 수정 버튼이 없고 저장도 하지 않습니다. 비밀키가 들어가지 않으니 링크를 그대로 나눠 줘도 됩니다.
+
+```
+https://bbeardev.github.io/cisnedjmax/bracket.html?view
+https://bbeardev.github.io/cisnedjmax/track.html?view
+```
+
+- 트랙리스트는 경기 탭을 눌러 다른 경기도 볼 수 있습니다(방송 화면에는 영향 없음).
+- 선수별로 미리 등록한 4강·준결승 자선곡까지 모두 보입니다.
+- 대진표·트랙리스트 데이터는 원래 누구나 읽을 수 있어서(방송 화면이 읽어야 함), 이 페이지를 막아도 DB 주소로 직접 조회하는 것까지 막을 수는 없습니다.
+
 ## 문제 해결
 
 | 증상 | 확인할 것 |
