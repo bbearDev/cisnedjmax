@@ -266,7 +266,7 @@ https://bbeardev.github.io/cisnedjmax/track.html?control&key=여기에비밀키
 | 삭제 | 대진표 6강에 배치된 선수는 먼저 대진표에서 빼야 삭제 가능 |
 
 - 곡 선택 창은 곡 이름이나 작곡가 일부로 검색합니다.
-- 자켓 이미지는 V-ARCHIVE에서 불러옵니다. 최근 곡처럼 V-ARCHIVE에 자켓이 없으면 카드에 라벨(`1P 선곡` 등)이 대신 표시됩니다.
+- 자켓 이미지는 V-ARCHIVE(`/s3/images/jackets/곡번호.jpg`)에서 불러옵니다. 자켓을 못 불러오면 카드에 라벨(`1P 선곡` 등)이 대신 표시됩니다.
 
 ---
 

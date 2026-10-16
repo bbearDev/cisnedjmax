@@ -120,7 +120,8 @@ function leader(s, g, id) {
 
 function fmtScore(n) { return n == null ? '' : n.toLocaleString('en-US'); }
 function chartDiff(c) { return c ? c.b + ' ' + c.d + ' ' + c.l : ''; }
-function jacketUrl(c) { return c ? 'https://v-archive.net/static/images/jackets/' + c.s + '.jpg' : ''; }
+// V-ARCHIVE 사이트가 쓰는 자켓 경로 (120×120, 신곡 포함). /static/images/jackets/는 80×80이고 781번 이후가 없습니다.
+function jacketUrl(c) { return c ? 'https://v-archive.net/s3/images/jackets/' + c.s + '.jpg' : ''; }
 
 function subscribe(onState, onStatus) {
   var es = new EventSource(ROOT_URL + '/state.json');

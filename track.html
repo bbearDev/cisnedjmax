@@ -408,6 +408,9 @@
       return el;
     }
 
+    // 자켓 이미지는 카드별로 한 번만 만들어 다시 그릴 때 재사용합니다 (깜빡임·반복 요청 방지)
+    var imgs = {}, failed = {};
+
     // 조작판에서 '방송에 표시'한 경기를 그립니다
     function render() {
       layer.textContent = '';
@@ -423,12 +426,18 @@
         var jacket = box('jacket', left, JACKET.top, CARD_W, JACKET.height);
         var info = box('info', left, INFO.top, CARD_W, INFO.height);
         if (c) {
-          var img = document.createElement('img');
-          img.src = jacketUrl(c); img.alt = '';
-          // 자켓을 못 불러오면 라벨만 표시합니다
-          img.onerror = function () { jacket.textContent = label; info.removeChild(tag); };
-          jacket.appendChild(img);
-          var tag = add(info, 'label-tag', label);
+          var url = jacketUrl(c), k = i + '|' + url;
+          if (failed[url]) jacket.textContent = label;  // 자켓을 못 불러오면 라벨만 표시합니다
+          else {
+            if (!imgs[k]) {
+              imgs[k] = document.createElement('img');
+              imgs[k].alt = '';
+              imgs[k].onerror = function () { failed[url] = true; delete imgs[k]; render(); };
+              imgs[k].src = url;
+            }
+            jacket.appendChild(imgs[k]);
+            add(info, 'label-tag', label);
+          }
           add(info, 'title', c.n);
           add(info, 'diff', chartDiff(c));
         } else {
