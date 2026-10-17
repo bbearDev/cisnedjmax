@@ -267,6 +267,7 @@ http.createServer(function (req, res) {
     if (path === BASE + '/callback') back(res, { error: 'server' });
     else json(res, 500, { error: 'server' });
   }
+  if (path.indexOf(BASE + '/admin/') === 0) log('관리자 요청', { route: route, origin: req.headers.origin || '' });
   if (req.method === 'OPTIONS' && path.indexOf(BASE + '/admin/') === 0) {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': ALLOW_ORIGIN,

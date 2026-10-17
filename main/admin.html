@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko">
+<html lang="ko" data-app="admin">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -211,9 +211,9 @@
   onAuthStateChanged(auth, async function (user) {
     subs.forEach(function (off) { off(); });
     subs = [];
-    if (!user || !key()) { if (user) await signOut(auth); return loginScreen(); }
+    if (!user || !key()) return loginScreen();
     var claims = (await user.getIdTokenResult()).claims;
-    if (claims.admin !== ROOM) { setKey(''); await signOut(auth); return; }
+    if (claims.admin !== ROOM) return loginScreen();
     ['config', 'teams', 'picks'].forEach(function (k) {
       subs.push(onValue(roomRef(k), function (s) { state[k] = s.val() || {}; render(); },
         function (err) { say('error', '불러오지 못했습니다: ' + err.message); }));

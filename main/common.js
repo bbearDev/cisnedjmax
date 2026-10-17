@@ -10,13 +10,14 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import { getAuth } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getDatabase, ref } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
 
+// 앱 이름(<html data-app>)마다 로그인이 따로 저장됩니다 — 관리자와 선수가 한 브라우저에 함께 로그인해도 서로 덮어쓰지 않습니다
 var app = initializeApp({
   apiKey: 'AIzaSyCbPV3tTXlsgW-e_-IO8TlqY1PVbotkXlI',
   authDomain: 'cisne-djmax.firebaseapp.com',
   databaseURL: 'https://cisne-djmax-default-rtdb.asia-southeast1.firebasedatabase.app',
   projectId: 'cisne-djmax',
   appId: '1:716176190972:web:d617fb332e81c1067d5679'
-});
+}, document.documentElement.dataset.app || 'player');
 
 export var auth = getAuth(app);
 export var db = getDatabase(app);
