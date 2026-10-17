@@ -17,7 +17,7 @@
 // 보면 = { s: 곡 번호(V-ARCHIVE title), n: 곡 이름, b: '6B', d: 'SC', l: 레벨 }
 
 var DB_URL = 'https://cisne-djmax-default-rtdb.asia-southeast1.firebasedatabase.app/';
-var ROOM = 'main';
+var ROOM = 'leader';
 
 var q = new URLSearchParams(location.search);
 DB_URL = (q.get('db') || DB_URL).replace(/\/$/, '');

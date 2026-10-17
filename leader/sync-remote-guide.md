@@ -14,7 +14,7 @@
 
 - 방송 화면: Sync 오버레이의 **외부 URL 위젯**으로 띄웁니다.
 - 조작판: 관리자가 PC·휴대폰 어디서든 열어 조작합니다.
-- 세 위젯은 같은 Firebase·같은 비밀키를 함께 씁니다. 대진표와 트랙리스트는 데이터(`bracket/main`)도 함께 씁니다. 아래 1~3단계는 한 번만 하면 됩니다.
+- 세 위젯은 같은 Firebase·같은 비밀키를 함께 씁니다. 대진표와 트랙리스트는 데이터(`bracket/leader`)도 함께 씁니다. 아래 1~3단계는 한 번만 하면 됩니다.
 - 중계: Firebase Realtime Database(무료)가 상태를 저장하고 실시간으로 전달합니다.
 
 > Sync의 **인라인(HTML 업로드) 위젯**은 외부 통신이 막혀 있어(`connect-src 'none'`) 이 기능을 쓸 수 없습니다. 반드시 **외부 URL 위젯**으로 넣어야 합니다.
@@ -28,7 +28,7 @@
 3. **Branch**: `main` / `/ (root)` → **Save**
 4. 1~2분 뒤 아래 주소가 열리면 완료
    ```
-   https://bbeardev.github.io/cisnedjmax/keyword.html
+   https://bbeardev.github.io/cisnedjmax/leader/keyword.html
    ```
 
 ---
@@ -94,7 +94,7 @@
 > - 유출되면 Firebase에서 값만 바꾸면 됩니다(아래 방법 B). 이전 주소는 바로 쓸 수 없게 됩니다.
 
 ### 2-4. 비밀키 등록
-`secrets/main` 위치에 비밀키를 저장합니다. `main`은 방 이름입니다.
+`secrets/leader` 위치에 비밀키를 저장합니다. `leader`는 방 이름입니다(팀장 선출전).
 (경기·장면별로 따로 쓰고 싶으면 `secrets` 아래에 방을 더 만들고, 위젯·조작판 주소에 `&room=방이름`을 붙입니다.)
 
 #### 방법 A. JSON 가져오기 (처음 한 번, 추천)
@@ -102,7 +102,7 @@
    ```json
    {
      "secrets": {
-       "main": "여기에비밀키"
+       "leader": "여기에비밀키"
      }
    }
    ```
@@ -118,20 +118,30 @@
 1. **데이터** 탭 트리 맨 위의 DB 주소 줄(`https://…firebasedatabase.app/`)에 **마우스를 올립니다.**
    **+** 아이콘은 마우스를 올려야 나타납니다.
 2. **+** 클릭 → 키 `secrets`, 값은 비워 두고 옆의 **+** 를 한 번 더 클릭
-3. 하위 칸에 키 `main`, 값 `여기에비밀키` → **추가**
+3. 하위 칸에 키 `leader`, 값 `여기에비밀키` → **추가**
 
-비밀키를 바꿀 때는 `main` 값을 클릭해 직접 고치면 됩니다.
+비밀키를 바꿀 때는 `leader` 값을 클릭해 직접 고치면 됩니다.
 
 #### 확인
 트리가 아래처럼 보이면 완료입니다.
 ```
 https://프로젝트이름-default-rtdb.asia-southeast1.firebasedatabase.app/
 └ secrets
-   └ main: "3f6c2a9e-8b1d-4c7a-9e2f-5d0b7a1c4e88"
+   └ leader: "3f6c2a9e-8b1d-4c7a-9e2f-5d0b7a1c4e88"
 ```
 
 - 조작판 주소의 `&key=` 값과 **글자 하나까지** 같아야 합니다(대소문자·공백 포함).
 - 콘솔에서의 추가·수정은 보안 규칙과 상관없이 됩니다.
+
+#### 방 이름 변경(main → leader) 전 데이터 옮기기
+2026-10-17 프로젝트 분리 전까지 팀장 선출전은 방 `main`을 썼습니다. `main`은 이제 본선(`main/` 폴더)용입니다.
+기존 상태를 이어 쓰려면 콘솔 **데이터** 탭에서 아래를 한 번 합니다.
+1. `secrets`에 `leader` 추가 (방법 B. 값은 기존 `main`과 같은 비밀키를 써도 됩니다)
+2. 트리에서 `keyword`를 클릭해 그 안으로 들어간 뒤 **⋮ → JSON 내보내기**
+3. 받은 파일을 메모장으로 열어 맨 앞의 `"main"`을 `"leader"`로 바꿔 저장
+4. 같은 `keyword` 화면에서 **⋮ → JSON 가져오기** → 고친 파일 선택
+   (이 위치만 덮어씁니다. `keyword/main`은 사라지고 `keyword/leader`가 생깁니다. 본선은 빈 상태로 시작하면 됩니다)
+5. `bracket`도 2~4를 똑같이 합니다.
 
 ---
 
@@ -141,7 +151,7 @@ https://프로젝트이름-default-rtdb.asia-southeast1.firebasedatabase.app/
 
 ```js
 var DB_URL = 'https://프로젝트이름-default-rtdb.asia-southeast1.firebasedatabase.app';
-var ROOM = 'main';
+var ROOM = 'leader';
 ```
 
 (파일을 고치지 않고 주소 뒤에 `?db=…&room=…`로 넘겨도 됩니다.)
@@ -154,9 +164,9 @@ var ROOM = 'main';
 2. 종류: **외부 URL**
 3. 주소
    ```
-   https://bbeardev.github.io/cisnedjmax/keyword.html
-   https://bbeardev.github.io/cisnedjmax/bracket.html
-   https://bbeardev.github.io/cisnedjmax/track.html
+   https://bbeardev.github.io/cisnedjmax/leader/keyword.html
+   https://bbeardev.github.io/cisnedjmax/leader/bracket.html
+   https://bbeardev.github.io/cisnedjmax/leader/track.html
    ```
    (위젯마다 하나씩, 필요한 장면에 추가)
 4. 크기: **1920 × 1080** (화면 전체)
@@ -169,7 +179,7 @@ var ROOM = 'main';
 아래 주소를 관리자 브라우저(PC·휴대폰)로 엽니다.
 
 ```
-https://bbeardev.github.io/cisnedjmax/keyword.html?control&key=여기에비밀키
+https://bbeardev.github.io/cisnedjmax/leader/keyword.html?control&key=여기에비밀키
 ```
 
 | 기능 | 동작 |
@@ -222,7 +232,7 @@ https://bbeardev.github.io/cisnedjmax/keyword.html?control&key=여기에비밀�
 ## 7. 대진표 조작판
 
 ```
-https://bbeardev.github.io/cisnedjmax/bracket.html?control&key=여기에비밀키
+https://bbeardev.github.io/cisnedjmax/leader/bracket.html?control&key=여기에비밀키
 ```
 
 | 기능 | 동작 |
@@ -242,7 +252,7 @@ https://bbeardev.github.io/cisnedjmax/bracket.html?control&key=여기에비밀�
 ## 8. 트랙리스트 조작판
 
 ```
-https://bbeardev.github.io/cisnedjmax/track.html?control&key=여기에비밀키
+https://bbeardev.github.io/cisnedjmax/leader/track.html?control&key=여기에비밀키
 ```
 
 ### 경기 선택·편집
@@ -275,8 +285,8 @@ https://bbeardev.github.io/cisnedjmax/track.html?control&key=여기에비밀키
 선수·스태프에게 진행 상황을 보여 줄 때 씁니다. 조작판과 같은 화면이 실시간으로 바뀌지만, 입력칸과 수정 버튼이 없고 저장도 하지 않습니다. 비밀키가 들어가지 않으니 링크를 그대로 나눠 줘도 됩니다.
 
 ```
-https://bbeardev.github.io/cisnedjmax/bracket.html?view
-https://bbeardev.github.io/cisnedjmax/track.html?view
+https://bbeardev.github.io/cisnedjmax/leader/bracket.html?view
+https://bbeardev.github.io/cisnedjmax/leader/track.html?view
 ```
 
 - 트랙리스트는 경기 탭을 눌러 다른 경기도 볼 수 있습니다(방송 화면에는 영향 없음).
@@ -289,7 +299,7 @@ https://bbeardev.github.io/cisnedjmax/track.html?view
 |---|---|
 | 조작판에 **DB_URL 미설정** | 3단계 `DB_URL` 입력·커밋 여부, 또는 주소에 `&db=…` 추가 |
 | 조작판에 **주소에 &key= 가 없습니다** | 조작판 주소 끝에 `&key=비밀키`를 붙였는지 |
-| **저장 실패: key 확인** | Firebase 데이터 탭 `secrets/main` 값과 주소의 `key`가 같은지(2-4), 2-2 규칙 전체를 최신으로 게시했는지 |
+| **저장 실패: key 확인** | Firebase 데이터 탭 `secrets/leader` 값과 주소의 `key`가 같은지(2-4), 2-2 규칙 전체를 최신으로 게시했는지 |
 | 트랙리스트 **곡 목록을 불러오지 못했습니다** | 6-1 `songs` 가져오기, 2-2 규칙의 `songs` 줄 |
 | 조작판은 정상인데 화면이 그대로 | Sync 위젯이 **외부 URL** 종류인지(인라인 X), 주소가 `github.io`인지 |
 | 위젯 자리에 아무것도 안 나옴 | 1단계 GitHub Pages가 켜졌는지, 주소를 브라우저로 직접 열어 확인 |
