@@ -1,2 +1,4 @@
 .omc/
 정리본.md
+main/auth-server/.env
+main/auth-server/firebase-sa.json

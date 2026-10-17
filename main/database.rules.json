@@ -1,0 +1,49 @@
+{
+  "rules": {
+    "secrets": { ".read": false, ".write": false },
+    "keyword": {
+      "$room": {
+        "state": { ".read": true },
+        ".write": "root.child('secrets').child($room).isString() && newData.child('key').isString() && newData.child('key').val().beginsWith(root.child('secrets').child($room).val() + ':') && newData.child('key').val() !== data.child('key').val()"
+      }
+    },
+    "bracket": {
+      "$room": {
+        "state": { ".read": true },
+        ".write": "root.child('secrets').child($room).isString() && newData.child('key').isString() && newData.child('key').val().beginsWith(root.child('secrets').child($room).val() + ':') && newData.child('key').val() !== data.child('key').val()"
+      }
+    },
+    "songs": { ".read": true, ".write": false },
+    "tourney": {
+      "$room": {
+        ".read": "auth != null && auth.token.admin === $room",
+        ".write": "auth != null && auth.token.admin === $room",
+        "config": {
+          ".read": true,
+          "deadline": { ".validate": "newData.isNumber()" }
+        },
+        "teams": {
+          ".read": true,
+          "$tid": {
+            "name": {
+              ".write": "auth != null && auth.token.room === $room && auth.token.team === $tid && root.child('tourney').child($room).child('teams').child($tid).child('members').child(auth.uid).exists() && now < root.child('tourney').child($room).child('config/deadline').val()",
+              ".validate": "newData.isString() && newData.val().length <= 20"
+            }
+          }
+        },
+        "picks": {
+          "$tid": {
+            ".read": "auth != null && auth.token.room === $room && auth.token.team === $tid && root.child('tourney').child($room).child('teams').child($tid).child('members').child(auth.uid).exists()",
+            ".write": "auth != null && auth.token.room === $room && auth.token.team === $tid && root.child('tourney').child($room).child('teams').child($tid).child('members').child(auth.uid).exists() && now < root.child('tourney').child($room).child('config/deadline').val()",
+            "r1": { ".validate": "newData.child('s').isNumber() && newData.child('n').isString()" },
+            "r2": { ".validate": "newData.child('s').isNumber() && newData.child('n').isString()" },
+            "f": {
+              "$i": { ".validate": "($i === '0' || $i === '1' || $i === '2') && newData.child('s').isNumber() && newData.child('n').isString()" }
+            },
+            "$other": { ".validate": false }
+          }
+        }
+      }
+    }
+  }
+}

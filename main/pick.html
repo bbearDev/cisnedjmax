@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>본선 자선곡 입력</title>
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+<main>
+  <h1>본선 자선곡 입력</h1>
+  <p class="hint" id="deadline"></p>
+  <div id="app"><p class="hint">불러오는 중…</p></div>
+</main>
+
+<script type="module">
+  import { auth, db, ROOM, AUTH_URL, STAGES, roomRef, esc, jacketUrl, fmtTime, slots, pickSong } from './common.js';
+  import { signInWithCustomToken, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+  import { ref, onValue, set, remove } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
+
+  var ERRORS = {
+    not_registered: '본선 선수로 등록되지 않은 계정입니다. 관리자에게 문의하세요.',
+    not_member: '시스네 디스코드 서버에 들어가 있지 않은 계정입니다.',
+    denied: '디스코드 로그인을 취소했습니다.',
+    state: '로그인 시간이 지났거나 잘못된 요청입니다. 다시 로그인하세요.'
+  };
+  var app = document.getElementById('app');
+  var deadlineEl = document.getElementById('deadline');
+  var notice = '';          // 화면 위에 띄울 안내 ({ cls, text })
+  var view = null;          // { uid, team, teamData, picks }
+  var deadline = 0, offset = 0, subs = [];
+
+  function now() { return Date.now() + offset; }
+  function open() { return deadline && now() < deadline; }
+
+  function show(html) {
+    app.innerHTML = (notice ? '<p class="msg ' + notice.cls + '">' + esc(notice.text) + '</p>' : '') + html;
+  }
+
+  function loginScreen() {
+    show('<div class="card"><p>등록된 본선 선수만 들어올 수 있습니다. 디스코드 계정으로 로그인하세요.</p>' +
+      '<a href="' + AUTH_URL + '/login"><button class="primary" type="button">디스코드로 로그인</button></a></div>');
+  }
+
+  function logoutButton(label) { return '<button type="button" data-act="logout">' + (label || '로그아웃') + '</button>'; }
+
+  function render() {
+    if (!view) return;
+    var t = view.teamData;
+    if (!t || !t.members || !t.members[view.uid]) {
+      show('<div class="card"><p>팀 등록 정보가 바뀌었습니다. 다시 로그인하세요.</p>' + logoutButton('다시 로그인') + '</div>');
+      return;
+    }
+    var editable = open();
+    var members = Object.keys(t.members).map(function (id) {
+      return esc(t.members[id] || id) + (id === view.uid ? ' <small class="hint">(나)</small>' : '');
+    }).join(', ');
+    var html = '<div class="card"><h2>팀 정보</h2>' +
+      '<div class="row"><input type="text" id="tname" class="grow" maxlength="20" placeholder="팀명 (최대 20자)" value="' + esc(t.name || '') + '"' + (editable ? '' : ' disabled') + '>' +
+      (editable ? '<button type="button" data-act="name">팀명 저장</button>' : '') + '</div>' +
+      '<p class="hint">팀원: ' + members + '</p>' +
+      '<div class="row">' + logoutButton() + '</div></div>';
+
+    STAGES.forEach(function (stage) {
+      var list = slots(view.picks, stage);
+      html += '<div class="card"><h2>' + stage.name + ' 자선곡' + (stage.count > 1 ? ' (' + stage.count + '곡 중 랜덤 선정)' : '') + '</h2>';
+      if (stage.key === 'r2') html += '<p class="hint">6강을 부전승으로 올라가면 4강 곡은 쓰지 않습니다.</p>';
+      list.forEach(function (c, i) {
+        html += '<div class="slot">' +
+          (c ? '<img class="jacket" alt="" src="' + jacketUrl(c) + '">' : '<div class="jacket"></div>') +
+          '<div class="name">' + (c ? esc(c.n) : '<small>미정</small>') + '</div>' +
+          (editable ? '<button type="button" data-act="pick" data-stage="' + stage.key + '" data-i="' + i + '">' + (c ? '변경' : '곡 선택') + '</button>' +
+            (c ? '<button type="button" class="danger" data-act="clear" data-stage="' + stage.key + '" data-i="' + i + '">비우기</button>' : '') : '') +
+          '</div>';
+      });
+      html += '</div>';
+    });
+    if (!editable) html = '<p class="msg">자선곡 입력이 마감되었습니다. 변경이 필요하면 관리자에게 문의하세요.</p>' + html;
+    show(html);
+  }
+
+  function slotPath(stage, i) {
+    return 'picks/' + view.team + '/' + stage + (STAGES.filter(function (s) { return s.key === stage; })[0].count > 1 ? '/' + i : '');
+  }
+
+  function failed(e) {
+    notice = { cls: 'error', text: /permission/i.test(e && e.code + e.message) ? '저장할 수 없습니다. 마감되었거나 권한이 없습니다.' : '저장에 실패했습니다: ' + (e && e.message) };
+    render();
+  }
+
+  app.addEventListener('click', async function (e) {
+    var b = e.target.closest('button[data-act]');
+    if (!b) return;
+    var act = b.dataset.act;
+    if (act === 'logout') { await signOut(auth); return; }
+    if (act === 'name') {
+      var name = document.getElementById('tname').value.trim();
+      if (!name) { notice = { cls: 'error', text: '팀명을 입력하세요.' }; return render(); }
+      try { await set(roomRef('teams/' + view.team + '/name'), name); notice = { cls: 'ok', text: '팀명을 저장했습니다.' }; render(); } catch (err) { failed(err); }
+      return;
+    }
+    var stage = b.dataset.stage, i = Number(b.dataset.i);
+    if (act === 'clear') {
+      try { await remove(roomRef(slotPath(stage, i))); notice = ''; } catch (err) { failed(err); }
+      return;
+    }
+    if (act === 'pick') {
+      var info = STAGES.filter(function (s) { return s.key === stage; })[0];
+      var song = await pickSong(info.name + ' 자선곡' + (info.count > 1 ? ' ' + (i + 1) : ''));
+      if (!song) return;
+      var dup = slots(view.picks, info).some(function (c, j) { return c && j !== i && c.s === song.s; });
+      if (dup) { notice = { cls: 'error', text: '같은 단계에 이미 고른 곡입니다.' }; return render(); }
+      try { await set(roomRef(slotPath(stage, i)), song); notice = ''; } catch (err) { failed(err); }
+    }
+  });
+
+  function unsubscribe() { subs.forEach(function (off) { off(); }); subs = []; }
+
+  onValue(ref(db, '.info/serverTimeOffset'), function (s) { offset = s.val() || 0; });
+  onValue(roomRef('config/deadline'), function (s) {
+    deadline = s.val() || 0;
+    deadlineEl.textContent = '마감: ' + fmtTime(deadline) + (deadline ? ' (한국 시간)' : '');
+    render();
+  });
+  // 마감 시각을 넘기면 화면을 잠급니다
+  setInterval(function () { if (view && deadline && !open() && document.getElementById('tname') && !document.getElementById('tname').disabled) render(); }, 5000);
+
+  onAuthStateChanged(auth, async function (user) {
+    unsubscribe();
+    view = null;
+    if (!user) return loginScreen();
+    var claims = (await user.getIdTokenResult()).claims;
+    if (claims.admin || claims.room !== ROOM || !claims.team) {
+      show('<div class="card"><p>선수 계정이 아닙니다' + (claims.admin ? ' (관리자 로그인 상태)' : '') + '. 로그아웃 후 디스코드로 다시 로그인하세요.</p>' + logoutButton() + '</div>');
+      return;
+    }
+    view = { uid: user.uid, team: claims.team, teamData: undefined, picks: null };
+    var ready = { team: false, picks: false };
+    function done(k) { ready[k] = true; if (ready.team && ready.picks) render(); }
+    subs.push(onValue(roomRef('teams/' + claims.team), function (s) { view.teamData = s.val(); done('team'); }));
+    subs.push(onValue(roomRef('picks/' + claims.team), function (s) { view.picks = s.val(); done('picks'); },
+      function () { view.picks = null; done('picks'); }));
+  });
+
+  // 로그인 서버에서 돌아온 결과 (#token=… 또는 #error=…)
+  var hash = new URLSearchParams(location.hash.slice(1));
+  if (hash.has('token') || hash.has('error')) history.replaceState(null, '', location.pathname + location.search);
+  if (hash.get('error')) {
+    notice = { cls: 'error', text: ERRORS[hash.get('error')] || '로그인에 실패했습니다 (' + hash.get('error') + '). 잠시 후 다시 시도하세요.' };
+    signOut(auth);
+  } else if (hash.get('token')) {
+    signInWithCustomToken(auth, hash.get('token')).catch(function (e) {
+      notice = { cls: 'error', text: '로그인에 실패했습니다: ' + e.message };
+      loginScreen();
+    });
+  }
+</script>
+</body>
+</html>

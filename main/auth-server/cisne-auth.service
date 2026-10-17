@@ -1,0 +1,12 @@
+[Unit]
+Description=cisne-auth — 본선 자선곡 입력용 디스코드 로그인 (Firebase custom token)
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/git/cisne-auth
+ExecStart=%h/.local/node/bin/node --env-file=%h/git/cisne-auth/.env %h/git/cisne-auth/server.mjs
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

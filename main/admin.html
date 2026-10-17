@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>본선 관리</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  .team .members { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; }
+  .team .members label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+  .team .nick { color: var(--text); font-size: 14px; min-height: 21px; }
+  .team .nick.bad { color: var(--danger); }
+  .picks h3 { font-size: 14px; margin: 12px 0 0; color: var(--muted); }
+  @media (max-width: 520px) { .team .members { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>본선 관리</h1>
+  <div id="app"><p class="hint">불러오는 중…</p></div>
+</main>
+
+<script type="module">
+  import { auth, ROOM, AUTH_URL, STAGES, roomRef, esc, jacketUrl, fmtTime, slots, pickSong } from './common.js';
+  import { signInWithCustomToken, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+  import { onValue, set, remove, update } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
+
+  var KEY_STORE = 'cisne-admin-key';
+  var app = document.getElementById('app');
+  var state = { config: {}, teams: {}, picks: {} };
+  var drafts = {};          // 저장 전 입력값 { <팀ID>: { name, ids: [a, b], nicks: { id: 닉네임|null } } }
+  var notice = '', subs = [];
+
+  function key() { try { return sessionStorage.getItem(KEY_STORE) || ''; } catch (e) { return ''; } }
+  function setKey(v) { try { v ? sessionStorage.setItem(KEY_STORE, v) : sessionStorage.removeItem(KEY_STORE); } catch (e) { /* 저장 안 됨 */ } }
+
+  function show(html) {
+    app.innerHTML = (notice ? '<p class="msg ' + notice.cls + '">' + esc(notice.text) + '</p>' : '') + html;
+  }
+  function say(cls, text) { notice = { cls: cls, text: text }; render(); }
+
+  function loginScreen() {
+    show('<div class="card"><h2>관리자 로그인</h2><form class="row" id="login">' +
+      '<input type="password" id="key" class="grow" placeholder="관리자 비밀키" autocomplete="current-password">' +
+      '<button class="primary">로그인</button></form></div>');
+    document.getElementById('login').onsubmit = async function (e) {
+      e.preventDefault();
+      var k = document.getElementById('key').value.trim();
+      try {
+        var r = await fetch(AUTH_URL + '/admin/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: k }) });
+        if (r.status === 403) { notice = { cls: 'error', text: '비밀키가 맞지 않습니다.' }; return loginScreen(); }
+        if (!r.ok) throw new Error('서버 오류 ' + r.status);
+        setKey(k);
+        notice = '';
+        await signInWithCustomToken(auth, (await r.json()).token);
+      } catch (err) {
+        notice = { cls: 'error', text: '로그인에 실패했습니다: ' + err.message };
+        loginScreen();
+      }
+    };
+  }
+
+  function teamIds() {
+    return Object.keys(state.teams).sort(function (a, b) { return (state.teams[a].n || 0) - (state.teams[b].n || 0); });
+  }
+
+  // 저장된 팀은 입력을 시작할 때 드래프트로 복사합니다 (그 전에는 DB 값을 그대로 보여 줍니다)
+  function fromState(tid) {
+    var t = state.teams[tid] || {}, m = t.members || {}, ids = Object.keys(m);
+    return { name: t.name || '', ids: [ids[0] || '', ids[1] || ''], nicks: Object.assign({}, m) };
+  }
+  function draftOf(tid) { return drafts[tid] || (drafts[tid] = fromState(tid)); }
+
+  function nickHtml(d, id) {
+    if (!id) return '';
+    if (!(id in d.nicks)) return '<span class="hint">닉네임 확인 전</span>';
+    return d.nicks[id] === null ? '<span class="nick bad">서버에 없는 ID</span>' : esc(d.nicks[id]);
+  }
+
+  function teamCard(tid, i) {
+    var d = drafts[tid] || fromState(tid), saved = !!state.teams[tid];
+    var html = '<div class="card team" data-tid="' + tid + '"><h2>' + (i + 1) + '팀' + (saved ? '' : ' (저장 안 됨)') + '</h2>' +
+      '<div class="row"><input type="text" class="grow" data-f="name" maxlength="20" placeholder="팀명 (선수가 정함, 관리자 수정 가능)" value="' + esc(d.name) + '"></div>' +
+      '<div class="members">';
+    [0, 1].forEach(function (k) {
+      html += '<label>선수 ' + (k + 1) + ' 디스코드 ID<input type="text" inputmode="numeric" data-f="id' + k + '" placeholder="예: 832653005580926986" value="' + esc(d.ids[k]) + '">' +
+        '<span class="nick">' + nickHtml(d, d.ids[k]) + '</span></label>';
+    });
+    html += '</div><div class="row"><button type="button" data-act="nicks">닉네임 불러오기</button>' +
+      '<button type="button" class="primary" data-act="save">저장</button>' +
+      '<button type="button" class="danger" data-act="delete">삭제</button></div>';
+    if (saved) {
+      var p = state.picks[tid];
+      html += '<div class="picks">';
+      STAGES.forEach(function (stage) {
+        html += '<h3>' + stage.name + '</h3>';
+        slots(p, stage).forEach(function (c, j) {
+          html += '<div class="slot">' + (c ? '<img class="jacket" alt="" src="' + jacketUrl(c) + '">' : '<div class="jacket"></div>') +
+            '<div class="name">' + (c ? esc(c.n) : '<small>미정</small>') + '</div>' +
+            '<button type="button" data-act="pick" data-stage="' + stage.key + '" data-i="' + j + '">' + (c ? '변경' : '곡 선택') + '</button>' +
+            (c ? '<button type="button" class="danger" data-act="clear" data-stage="' + stage.key + '" data-i="' + j + '">비우기</button>' : '') + '</div>';
+        });
+      });
+      html += '</div>';
+    }
+    return html + '</div>';
+  }
+
+  function render() {
+    if (!key()) return;
+    var dl = state.config.deadline || 0;
+    var local = dl ? new Date(dl + 9 * 3600000).toISOString().slice(0, 16) : '';
+    var html = '<div class="card"><h2>자선곡 마감</h2><div class="row">' +
+      '<input type="datetime-local" id="deadline" value="' + local + '"><button type="button" data-act="deadline">저장</button>' +
+      '<span class="hint">현재: ' + fmtTime(dl) + ' (한국 시간)</span></div>' +
+      '<p class="hint">선수 입력 주소: <a href="pick.html">pick.html</a> · 마감 전에는 선수가, 마감 후에는 관리자만 바꿀 수 있습니다.</p></div>';
+    var ids = teamIds().concat(Object.keys(drafts).filter(function (t) { return !state.teams[t]; }));
+    ids.forEach(function (tid, i) { html += teamCard(tid, i); });
+    html += '<div class="row"><button type="button" data-act="add">팀 추가</button>' +
+      '<span class="grow"></span><button type="button" data-act="logout">로그아웃</button></div>';
+    show(html);
+  }
+
+  // 입력값은 그리기 전에 드래프트로 옮겨 둡니다
+  app.addEventListener('input', function (e) {
+    var card = e.target.closest('.team'), f = e.target.dataset.f;
+    if (!card || !f) return;
+    var d = draftOf(card.dataset.tid);
+    if (f === 'name') d.name = e.target.value;
+    else d.ids[Number(f.slice(2))] = e.target.value.trim();
+  });
+
+  async function fetchNicks(ids) {
+    var r = await fetch(AUTH_URL + '/admin/nicks?ids=' + ids.join(','), { headers: { 'X-Admin-Key': key() } });
+    if (r.status === 403) throw new Error('비밀키가 맞지 않습니다. 다시 로그인하세요.');
+    if (!r.ok) throw new Error('서버 오류 ' + r.status);
+    return r.json();
+  }
+
+  function newTid() {
+    var used = Object.keys(state.teams).concat(Object.keys(drafts)), i = 1;
+    while (used.indexOf('t' + i) >= 0) i++;
+    return 't' + i;
+  }
+
+  app.addEventListener('click', async function (e) {
+    var b = e.target.closest('button[data-act]');
+    if (!b) return;
+    var act = b.dataset.act, card = b.closest('.team'), tid = card && card.dataset.tid;
+    try {
+      if (act === 'logout') { setKey(''); await signOut(auth); return; }
+      if (act === 'add') { draftOf(newTid()); notice = ''; return render(); }
+      if (act === 'deadline') {
+        var v = document.getElementById('deadline').value;
+        if (!v) return say('error', '마감 시각을 입력하세요.');
+        await set(roomRef('config/deadline'), Date.parse(v + ':00+09:00'));
+        return say('ok', '마감 시각을 저장했습니다.');
+      }
+      if (act === 'nicks' || act === 'save') {
+        var d = draftOf(tid);
+        card.querySelectorAll('input[data-f]').forEach(function (el) {
+          if (el.dataset.f === 'name') d.name = el.value; else d.ids[Number(el.dataset.f.slice(2))] = el.value.trim();
+        });
+        var ids = d.ids.filter(Boolean);
+        if (ids.some(function (id) { return !/^\d{5,25}$/.test(id); })) return say('error', '디스코드 ID는 숫자만 입력하세요.');
+        if (act === 'save') {
+          if (ids.length !== 2) return say('error', '선수 2명의 디스코드 ID를 모두 입력하세요.');
+          if (ids[0] === ids[1]) return say('error', '같은 ID를 두 번 넣었습니다.');
+          var other = teamIds().filter(function (t) { return t !== tid && ids.some(function (id) { return state.teams[t].members && id in state.teams[t].members; }); })[0];
+          if (other) return say('error', '이미 다른 팀(' + (teamIds().indexOf(other) + 1) + '팀)에 등록된 선수가 있습니다.');
+        }
+        if (ids.length) Object.assign(d.nicks, await fetchNicks(ids));
+        if (act === 'nicks') { notice = ''; return render(); }
+        if (ids.some(function (id) { return d.nicks[id] === null; })) return say('error', '서버(길드)에 없는 ID가 있습니다. 확인 후 다시 저장하세요.');
+        var members = {};
+        ids.forEach(function (id) { members[id] = d.nicks[id]; });
+        var t = state.teams[tid];
+        await set(roomRef('teams/' + tid), {
+          name: d.name.trim(),
+          n: t ? t.n : teamIds().reduce(function (m, x) { return Math.max(m, state.teams[x].n || 0); }, 0) + 1,
+          members: members
+        });
+        delete drafts[tid];
+        return say('ok', '팀을 저장했습니다.');
+      }
+      if (act === 'delete') {
+        if (state.teams[tid] && !confirm('이 팀과 팀의 자선곡을 모두 지울까요?')) return;
+        var u = {};
+        u['teams/' + tid] = null;
+        u['picks/' + tid] = null;
+        if (state.teams[tid]) await update(roomRef(), u);
+        delete drafts[tid];
+        return say('ok', '팀을 삭제했습니다.');
+      }
+      var stage = b.dataset.stage, i = Number(b.dataset.i);
+      var info = STAGES.filter(function (s) { return s.key === stage; })[0];
+      var path = 'picks/' + tid + '/' + stage + (info.count > 1 ? '/' + i : '');
+      if (act === 'clear') { await remove(roomRef(path)); notice = ''; return; }
+      if (act === 'pick') {
+        var song = await pickSong(info.name + ' 자선곡' + (info.count > 1 ? ' ' + (i + 1) : ''));
+        if (!song) return;
+        if (slots(state.picks[tid], info).some(function (c, j) { return c && j !== i && c.s === song.s; })) return say('error', '같은 단계에 이미 고른 곡입니다.');
+        await set(roomRef(path), song);
+        notice = '';
+      }
+    } catch (err) {
+      say('error', /permission/i.test(err.code + err.message) ? '권한이 없습니다. 다시 로그인하세요.' : err.message);
+    }
+  });
+
+  onAuthStateChanged(auth, async function (user) {
+    subs.forEach(function (off) { off(); });
+    subs = [];
+    if (!user || !key()) { if (user) await signOut(auth); return loginScreen(); }
+    var claims = (await user.getIdTokenResult()).claims;
+    if (claims.admin !== ROOM) { setKey(''); await signOut(auth); return; }
+    ['config', 'teams', 'picks'].forEach(function (k) {
+      subs.push(onValue(roomRef(k), function (s) { state[k] = s.val() || {}; render(); },
+        function (err) { say('error', '불러오지 못했습니다: ' + err.message); }));
+    });
+  });
+</script>
+</body>
+</html>
