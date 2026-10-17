@@ -231,7 +231,7 @@ async function adminToken(req, res) {
   try { key = JSON.parse(await readBody(req)).key; } catch (e) { /* 아래에서 거부 */ }
   if (!sameKey(key)) {
     await wait(1000);
-    log('관리자 키 불일치');
+    log('관리자 키 불일치', { keyLength: String(key || '').length });
     return json(res, 403, { error: 'key' });
   }
   json(res, 200, { token: customToken('admin', { admin: ROOM }) });
@@ -243,6 +243,7 @@ async function adminNicks(req, res) {
   try { body = JSON.parse(await readBody(req)) || {}; } catch (e) { /* 아래에서 거부 */ }
   if (!sameKey(body.key)) {
     await wait(1000);
+    log('관리자 키 불일치 (닉네임)', { keyLength: String(body.key || '').length });
     return json(res, 403, { error: 'key' });
   }
   var ids = (Array.isArray(body.ids) ? body.ids : []).map(String).filter(function (id) { return /^\d{5,25}$/.test(id); }).slice(0, 10);

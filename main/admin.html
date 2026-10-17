@@ -32,6 +32,11 @@
   var notice = '', subs = [];
 
   function key() { try { return sessionStorage.getItem(KEY_STORE) || ''; } catch (e) { return ''; } }
+  // 403이어도 우리 서버가 키를 거부한 것({error:'key'})인지, 프록시가 막은 것인지 구분합니다
+  async function keyRejected(r) {
+    if (r.status !== 403) return false;
+    try { return (await r.clone().json()).error === 'key'; } catch (e) { return false; }
+  }
   function setKey(v) { try { v ? sessionStorage.setItem(KEY_STORE, v) : sessionStorage.removeItem(KEY_STORE); } catch (e) { /* 저장 안 됨 */ } }
 
   function show(html) {
@@ -48,8 +53,8 @@
       var k = document.getElementById('key').value.trim();
       try {
         var r = await fetch(AUTH_URL + '/admin/token', { method: 'POST', body: JSON.stringify({ key: k }) });
-        if (r.status === 403) { notice = { cls: 'error', text: '비밀키가 맞지 않습니다.' }; return loginScreen(); }
-        if (!r.ok) throw new Error('서버 오류 ' + r.status);
+        if (await keyRejected(r)) { notice = { cls: 'error', text: '비밀키가 맞지 않습니다.' }; return loginScreen(); }
+        if (!r.ok) throw new Error((r.status === 403 ? '프록시에서 차단됨 ' : '서버 오류 ') + r.status);
         setKey(k);
         notice = '';
         await signInWithCustomToken(auth, (await r.json()).token);
@@ -132,8 +137,8 @@
 
   async function fetchNicks(ids) {
     var r = await fetch(AUTH_URL + '/admin/nicks', { method: 'POST', body: JSON.stringify({ key: key(), ids: ids }) });
-    if (r.status === 403) throw new Error('비밀키가 맞지 않습니다. 다시 로그인하세요.');
-    if (!r.ok) throw new Error('서버 오류 ' + r.status);
+    if (await keyRejected(r)) throw new Error(key() ? '비밀키가 맞지 않습니다. 다시 로그인하세요.' : '이 탭에 비밀키가 없습니다. 로그아웃 후 다시 로그인하세요.');
+    if (!r.ok) throw new Error((r.status === 403 ? '프록시에서 차단됨 ' : '서버 오류 ') + r.status);
     return r.json();
   }
 
