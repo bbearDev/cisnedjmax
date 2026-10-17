@@ -47,7 +47,7 @@
       e.preventDefault();
       var k = document.getElementById('key').value.trim();
       try {
-        var r = await fetch(AUTH_URL + '/admin/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: k }) });
+        var r = await fetch(AUTH_URL + '/admin/token', { method: 'POST', body: JSON.stringify({ key: k }) });
         if (r.status === 403) { notice = { cls: 'error', text: '비밀키가 맞지 않습니다.' }; return loginScreen(); }
         if (!r.ok) throw new Error('서버 오류 ' + r.status);
         setKey(k);
@@ -131,7 +131,7 @@
   });
 
   async function fetchNicks(ids) {
-    var r = await fetch(AUTH_URL + '/admin/nicks?ids=' + ids.join(','), { headers: { 'X-Admin-Key': key() } });
+    var r = await fetch(AUTH_URL + '/admin/nicks', { method: 'POST', body: JSON.stringify({ key: key(), ids: ids }) });
     if (r.status === 403) throw new Error('비밀키가 맞지 않습니다. 다시 로그인하세요.');
     if (!r.ok) throw new Error('서버 오류 ' + r.status);
     return r.json();

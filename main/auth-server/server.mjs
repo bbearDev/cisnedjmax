@@ -4,7 +4,8 @@
 //   GET  /cisne-auth/callback     code 교환 → 등록부(tourney/<방>/teams)에 있는 선수인지 확인
 //                                 → RETURN_URL#token=…  (실패: RETURN_URL#error=…)
 //   POST /cisne-auth/admin/token  {key} → 관리자 Firebase custom token
-//   GET  /cisne-auth/admin/nicks?ids=a,b   (헤더 X-Admin-Key) → { id: 길드 닉네임 | null }
+//   POST /cisne-auth/admin/nicks  {key, ids: [a, b]} → { id: 길드 닉네임 | null }
+//   관리자 요청은 본문을 text/plain JSON으로 받습니다 — 브라우저가 preflight(OPTIONS)를 보내지 않아 프록시 설정과 무관합니다
 //   GET  /cisne-auth/healthz      ok
 //
 // 외부 의존성 없음 (Node 18+ 내장 fetch·crypto). 설정은 .env, 키는 firebase-sa.json 파일에서 읽습니다.
@@ -237,12 +238,14 @@ async function adminToken(req, res) {
 }
 
 // 봇 토큰으로 길드 닉네임을 찾습니다 (길드에 없으면 null)
-async function adminNicks(req, res, q) {
-  if (!sameKey(req.headers['x-admin-key'])) {
+async function adminNicks(req, res) {
+  var body = {};
+  try { body = JSON.parse(await readBody(req)) || {}; } catch (e) { /* 아래에서 거부 */ }
+  if (!sameKey(body.key)) {
     await wait(1000);
     return json(res, 403, { error: 'key' });
   }
-  var ids = (q.get('ids') || '').split(',').filter(function (id) { return /^\d{5,25}$/.test(id); }).slice(0, 10);
+  var ids = (Array.isArray(body.ids) ? body.ids : []).map(String).filter(function (id) { return /^\d{5,25}$/.test(id); }).slice(0, 10);
   var out = {};
   for (var i = 0; i < ids.length; i++) {
     var r = await fetch(DISCORD + '/guilds/' + GUILD_ID + '/members/' + ids[i], { headers: { Authorization: 'Bot ' + BOT_TOKEN } });
@@ -282,7 +285,7 @@ http.createServer(function (req, res) {
   if (route === 'GET ' + BASE + '/login') return login(res);
   if (route === 'GET ' + BASE + '/callback') return callback(req, res, u.searchParams).catch(fail);
   if (route === 'POST ' + BASE + '/admin/token') return adminToken(req, res).catch(fail);
-  if (route === 'GET ' + BASE + '/admin/nicks') return adminNicks(req, res, u.searchParams).catch(fail);
+  if (route === 'POST ' + BASE + '/admin/nicks') return adminNicks(req, res).catch(fail);
   res.writeHead(404); res.end();
 }).listen(PORT, '0.0.0.0', function () {
   log('시작', { port: PORT, room: ROOM, redirect: REDIRECT_URI, return: RETURN_URL });
