@@ -3,9 +3,10 @@
 //   GET  /cisne-auth/login        디스코드 인가 화면으로 보냄
 //   GET  /cisne-auth/callback     code 교환 → 등록부(tourney/<방>/teams)에 있는 선수인지 확인
 //                                 → RETURN_URL#token=…  (실패: RETURN_URL#error=…)
-//   POST /cisne-auth/admin/token  {key} → 관리자 Firebase custom token
-//   POST /cisne-auth/admin/nicks  {key, ids: [a, b]} → { id: 길드 닉네임 | null }
-//   관리자 요청은 본문을 text/plain JSON으로 받습니다 — 브라우저가 preflight(OPTIONS)를 보내지 않아 프록시 설정과 무관합니다
+//   POST /cisne-auth/admin/token  key=… → 관리자 Firebase custom token
+//   POST /cisne-auth/admin/nicks  key=…&ids=a,b → { id: 길드 닉네임 | null }
+//   관리자 요청은 폼(application/x-www-form-urlencoded)으로 받습니다 — 브라우저가 preflight(OPTIONS)를 보내지 않고
+//   BunkerWeb ModSecurity(CRS 920420)도 허용하는 형식입니다
 //   GET  /cisne-auth/healthz      ok
 //
 // 외부 의존성 없음 (Node 18+ 내장 fetch·crypto). 설정은 .env, 키는 firebase-sa.json 파일에서 읽습니다.
@@ -227,8 +228,7 @@ async function callback(req, res, q) {
 }
 
 async function adminToken(req, res) {
-  var key = '';
-  try { key = JSON.parse(await readBody(req)).key; } catch (e) { /* 아래에서 거부 */ }
+  var key = new URLSearchParams(await readBody(req)).get('key');
   if (!sameKey(key)) {
     await wait(1000);
     log('관리자 키 불일치', { keyLength: String(key || '').length });
@@ -239,14 +239,13 @@ async function adminToken(req, res) {
 
 // 봇 토큰으로 길드 닉네임을 찾습니다 (길드에 없으면 null)
 async function adminNicks(req, res) {
-  var body = {};
-  try { body = JSON.parse(await readBody(req)) || {}; } catch (e) { /* 아래에서 거부 */ }
-  if (!sameKey(body.key)) {
+  var body = new URLSearchParams(await readBody(req));
+  if (!sameKey(body.get('key'))) {
     await wait(1000);
-    log('관리자 키 불일치 (닉네임)', { keyLength: String(body.key || '').length });
+    log('관리자 키 불일치 (닉네임)', { keyLength: String(body.get('key') || '').length });
     return json(res, 403, { error: 'key' });
   }
-  var ids = (Array.isArray(body.ids) ? body.ids : []).map(String).filter(function (id) { return /^\d{5,25}$/.test(id); }).slice(0, 10);
+  var ids = (body.get('ids') || '').split(',').filter(function (id) { return /^\d{5,25}$/.test(id); }).slice(0, 10);
   var out = {};
   for (var i = 0; i < ids.length; i++) {
     var r = await fetch(DISCORD + '/guilds/' + GUILD_ID + '/members/' + ids[i], { headers: { Authorization: 'Bot ' + BOT_TOKEN } });
