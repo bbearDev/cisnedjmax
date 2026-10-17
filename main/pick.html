@@ -63,7 +63,7 @@
 
     STAGES.forEach(function (stage) {
       var list = slots(view.picks, stage);
-      html += '<div class="card"><h2>' + stage.name + ' 자선곡' + (stage.count > 1 ? ' (' + stage.count + '곡 중 랜덤 선정)' : '') + '</h2>';
+      html += '<div class="card"><h2>' + stage.name + ' 자선곡</h2>';
       if (stage.key === 'r2') html += '<p class="hint">6강을 부전승으로 올라가면 4강 곡은 쓰지 않습니다.</p>';
       list.forEach(function (c, i) {
         html += '<div class="slot">' +
