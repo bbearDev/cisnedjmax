@@ -22,6 +22,7 @@
           ".read": true,
           "deadline": { ".validate": "newData.isNumber()" }
         },
+        "live": { ".read": true },
         "teams": {
           ".read": true,
           "$tid": {

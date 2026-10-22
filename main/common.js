@@ -5,10 +5,23 @@
 //   teams:  { <팀ID>: { name: 팀명, n: 순서, members: { <디스코드ID>: 길드 닉네임 } } }
 //   picks:  { <팀ID>: { r1: 곡, r2: 곡, f: { 0|1|2: 곡 } } }    r1=6강 r2=4강 f=결승 후보 3곡
 //   곡 = { s: 곡 번호(V-ARCHIVE title), n: 곡 이름 }
+//
+//   live:   방송 화면이 읽는 공개 데이터 (쓰기는 관리자만)
+//     scene: 'standby' | 'rule' | 'bracket' | 'track'   오버레이에 띄울 화면
+//     timer: 대기화면 타이머 종료 시각 (서버 ms)
+//     r1:    [팀ID × 6]   6강 배치 (대진표 맨 아래 칸 왼쪽부터)
+//     cur:   'm1'~'m5'    트랙리스트에 띄울 경기
+//     matches: { m1~m5: {
+//       win:    팀ID                           관리자가 확정한 승자
+//       sum:    { 팀ID: 숫자 }                  대진표 점수 (6강·4강: 획득 점수 합, 결승: 승수)
+//       games:  [{ song: 곡, by: 팀ID, base: 기준점수, at: 추첨 시각 }]   판 순서대로
+//       pool:   [곡 × 최대 6], drawAt: 시각    결승만: 3곡 추첨 후보와 추첨 시각
+//     } }
+//   scores: { m1~m5: { <판 번호>: { <디스코드ID>: 점수 } } }   관리자만 읽기
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getDatabase, ref } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
+import { getDatabase, ref, onValue } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
 
 // 앱 이름(<html data-app>)마다 로그인이 따로 저장됩니다 — 관리자와 선수가 한 브라우저에 함께 로그인해도 서로 덮어쓰지 않습니다
 var app = initializeApp({
@@ -30,6 +43,68 @@ export var STAGES = [
 ];
 
 export function roomRef(path) { return ref(db, 'tourney/' + ROOM + (path ? '/' + path : '')); }
+
+// 6강 3경기 → 4강(1경기 승자 vs 2경기 승자) → 결승(4강 승자 vs 3경기 부전승). stage는 쓰는 자선곡 칸
+export var MATCHES = [
+  { id: 'm1', name: '6강 1경기', stage: 'r1' },
+  { id: 'm2', name: '6강 2경기', stage: 'r1' },
+  { id: 'm3', name: '6강 3경기', stage: 'r1' },
+  { id: 'm4', name: '4강', stage: 'r2' },
+  { id: 'm5', name: '결승', stage: 'f' }
+];
+export var SCENES = [
+  { id: 'standby', name: '대기' },
+  { id: 'rule', name: '게임설명' },
+  { id: 'bracket', name: '대진표' },
+  { id: 'track', name: '트랙리스트' }
+];
+export var BASE_MIN = 1400000, BASE_MAX = 2000000, BASE_STEP = 10000;
+// 추첨을 누른 뒤 이 시간 안에 화면을 연 오버레이만 릴을 돌립니다
+export var REEL_MS = 3000;
+
+// Firebase는 빈 값을 지우고 배열을 객체로 돌려줄 수 있어 정리합니다
+// 순서 번호는 유지합니다 ({ 1: x } → [ , x])
+function list(v) {
+  if (Array.isArray(v)) return v;
+  var out = [];
+  Object.keys(v || {}).forEach(function (k) { if (/^\d+$/.test(k)) out[+k] = v[k]; });
+  return out;
+}
+export function normLive(v) {
+  v = v || {};
+  var out = { scene: v.scene || 'standby', timer: v.timer || 0, r1: [], cur: v.cur || '', matches: {} };
+  var r1 = v.r1 || {};
+  for (var i = 0; i < 6; i++) out.r1[i] = r1[i] || '';
+  MATCHES.forEach(function (m) {
+    var x = (v.matches || {})[m.id] || {};
+    out.matches[m.id] = { win: x.win || '', sum: x.sum || {}, games: Array.from(list(x.games), function (g) { return g || {}; }),
+      pool: list(x.pool).filter(Boolean), drawAt: x.drawAt || 0 };
+  });
+  return out;
+}
+
+// 6강 배치와 경기별 승자로 대진표 전체를 계산합니다.
+// 승자가 지금 그 경기 팀이 아니면(앞 경기 승자가 바뀐 경우) 무시합니다.
+export function derive(live) {
+  var r1 = live.r1, win = {}, teams = {};
+  function decide(id, a, b) {
+    var w = live.matches[id].win;
+    teams[id] = [a, b];
+    win[id] = a && b && (w === a || w === b) ? w : '';
+    return win[id];
+  }
+  var r2 = [decide('m1', r1[0], r1[1]), decide('m2', r1[2], r1[3]), decide('m3', r1[4], r1[5])];
+  var r3 = [decide('m4', r2[0], r2[1]), r2[2]];
+  var r4 = [decide('m5', r3[0], r3[1])];
+  return { r1: r1, r2: r2, r3: r3, r4: r4, win: win, teams: teams };
+}
+
+export function fmtScore(n) { return n == null ? '' : n.toLocaleString('en-US'); }
+
+// 서버 시각 (추첨 시각·타이머를 PC 시계 차이 없이 맞춥니다)
+var offset = 0;
+onValue(ref(db, '.info/serverTimeOffset'), function (s) { offset = s.val() || 0; });
+export function serverNow() { return Date.now() + offset; }
 
 export function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : t; return d.innerHTML; }
 

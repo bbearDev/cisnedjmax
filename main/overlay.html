@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="ko" data-app="overlay">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>디맥테마 전쟁 — 본선 오버레이</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  body { font-family: 'Pretendard Variable', Pretendard, 'Noto Sans CJK KR', sans-serif; }
+  /* 창 비율이 16:9가 아닐 때 남는 여백을 지금 화면 이미지를 흐리게 깔아 채웁니다 */
+  body::before {
+    content: ''; position: fixed; inset: -60px;
+    background: var(--bg) center / cover no-repeat;
+    filter: blur(30px) brightness(0.85);
+  }
+  .stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; color: #4a1458; }
+  /* 화면 전환: 모든 화면을 겹쳐 두고 지금 화면만 보이게 합니다 */
+  .scene { position: absolute; inset: 0; background: no-repeat 0 0 / 1920px 1080px; opacity: 0; transition: opacity 0.5s; }
+  .scene.on { opacity: 1; }
+  .scene[data-scene=standby] { background-image: url('main_overlay/1standby.png'); }
+  .scene[data-scene=rule] { background-image: url('main_overlay/2rule.png'); }
+  .scene[data-scene=bracket] { background-image: url('main_overlay/4bracket.png'); }
+  .scene[data-scene=track] { background-image: url('main_overlay/5track_other.png'); }
+  .scene[data-scene=track].final { background-image: url('main_overlay/5track_final.png'); }
+  .abs { position: absolute; box-sizing: border-box; }
+
+  /* 대기화면 하단 박스의 타이머 */
+  .clock {
+    left: 453px; top: 802px; width: 995px; height: 231px; padding-left: 150px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 150px; font-weight: 900; letter-spacing: 0.02em; font-variant-numeric: tabular-nums;
+    color: #5a1a6e; text-shadow: 0 4px 0 rgba(255, 255, 255, 0.9);
+  }
+
+  /* 대진표: 이미지의 흰 칸 위에 겹치는 팀 칸 */
+  .slot {
+    padding: 0 10px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-weight: 800; letter-spacing: -0.01em; line-height: 1.1; transition: background 0.3s, box-shadow 0.3s;
+  }
+  .slot .name { display: block; width: 100%; text-align: center; white-space: nowrap; overflow: hidden; }
+  .slot.big { font-size: 28px; }
+  .slot.small { font-size: 20px; }
+  .slot.has-sum.big { font-size: 24px; }
+  .slot.has-sum.small { font-size: 16px; }
+  .slot .sum { font-size: 18px; font-weight: 800; color: #9a5bb5; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .slot.small .sum { font-size: 13px; margin-top: 1px; }
+  .slot.win { background: linear-gradient(180deg, #fff3b0, #ffd23f); box-shadow: 0 0 0 4px #fff, 0 0 26px 8px rgba(255, 200, 40, 0.85); font-weight: 900; }
+  .slot.win .sum { color: #7a3d8f; }
+
+  /* 트랙리스트: VS 양옆 팀명 */
+  .team {
+    top: 365px; height: 80px; width: 330px; line-height: 80px; white-space: nowrap; overflow: hidden;
+    font-size: 46px; font-weight: 900; letter-spacing: -0.01em;
+    color: #fff; text-shadow: 0 3px 0 #5a1a6e, 0 0 12px rgba(90, 26, 110, 0.6);
+  }
+  .team.left { left: 1010px; text-align: right; }
+  .team.right { left: 1480px; text-align: left; }
+  /* 곡 칸: 위쪽 보라 정사각형은 자켓, 아래 흰 칸은 곡 이름과 기준점수 */
+  .jacket { display: flex; align-items: center; justify-content: center; overflow: hidden; font-size: 64px; font-weight: 900; color: #fff; text-shadow: 0 3px 0 rgba(74, 20, 88, 0.6); }
+  .jacket img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .jacket img:not([src]) { display: none; }
+  .info { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 6px 8px; text-align: center; overflow: hidden; }
+  .info .by { font-size: 14px; font-weight: 800; color: #9a5bb5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .info .title { font-size: 19px; font-weight: 800; line-height: 1.2; word-break: keep-all; overflow-wrap: anywhere; max-height: 46px; overflow: hidden; }
+  .info .base { font-size: 25px; font-weight: 900; color: #5a1a6e; font-variant-numeric: tabular-nums; }
+  .info .base small { display: block; font-size: 12px; font-weight: 800; color: #9a5bb5; letter-spacing: 0.05em; }
+  .info .base.rolling { color: #b04ad0; }
+  .card { transition: opacity 0.3s; }
+  .card.skip { opacity: 0.4; }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <section class="scene" data-scene="standby"><div class="abs clock" id="clock"></div></section>
+  <section class="scene" data-scene="rule"></section>
+  <section class="scene" data-scene="bracket" id="bracket"></section>
+  <section class="scene" data-scene="track" id="track">
+    <div class="abs team left"></div><div class="abs team right"></div>
+  </section>
+</div>
+
+<script type="module">
+  import { roomRef, MATCHES, BASE_MIN, BASE_MAX, BASE_STEP, REEL_MS, normLive, derive, fmtScore, jacketUrl, serverNow } from './common.js';
+  import { onValue } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
+
+  // ?scene=bracket 처럼 화면을 고정하면 관리 페이지의 전환을 따르지 않습니다 (OBS 장면마다 따로 넣을 때)
+  var FIXED = new URLSearchParams(location.search).get('scene');
+  var live = normLive(null), teams = {};
+  var stage = document.getElementById('stage');
+
+  // 4bracket.png 흰 칸의 측정 좌표 [left, top, width, height]
+  var SLOTS = {
+    r1: [[764, 743, 174, 107], [949, 743, 173, 107], [1155, 744, 174, 106], [1343, 743, 175, 107], [1550, 744, 174, 106], [1735, 743, 173, 107]],
+    r2: [[880, 639, 138, 50], [1265, 644, 138, 51], [1660, 640, 137, 50]],
+    r3: [[1036, 522, 174, 107], [1446, 530, 174, 107]],
+    r4: [[1243, 409, 174, 107]]
+  };
+  // 대진표 칸이 속한 경기 (4강 오른쪽 칸은 부전승, 맨 위는 우승 칸)
+  var SLOT_MATCH = { r1: ['m1', 'm1', 'm2', 'm2', 'm3', 'm3'], r2: ['m4', 'm4', ''], r3: ['m5', 'm5'], r4: [''] };
+  // 5track_*.png 곡 칸 좌표 [left, 자켓 top, width, 자켓 높이, 흰 칸 높이]
+  var CARDS = { 2: [1106, 1558], 3: [1094, 1333, 1582] };
+  var CARD_TOP = 542, CARD_W = 163, JACKET_H = 163, INFO_H = 153;
+  // 결승 3곡 추첨: 칸마다 이 시각(추첨 후 ms)에 멈춥니다
+  var DRAW_STOP = [1500, 2500, 3500];
+
+  function el(cls, r, parent) {
+    var d = document.createElement('div');
+    d.className = 'abs ' + cls;
+    d.style.left = r[0] + 'px'; d.style.top = r[1] + 'px'; d.style.width = r[2] + 'px'; d.style.height = r[3] + 'px';
+    parent.appendChild(d);
+    return d;
+  }
+  function teamName(tid) {
+    var t = tid && teams[tid];
+    if (!t) return '';
+    return t.name || Object.keys(t.members || {}).map(function (k) { return t.members[k]; }).join(' · ');
+  }
+  // 긴 이름은 칸을 넘지 않도록 글자 크기를 줄입니다
+  function shrinkToFit(e) {
+    e.style.fontSize = '';
+    var size = parseFloat(getComputedStyle(e).fontSize);
+    while (e.scrollWidth > e.clientWidth && size > 12) { size -= 1; e.style.fontSize = size + 'px'; }
+  }
+  function setText(e, t) { if (e.textContent !== t) { e.textContent = t; shrinkToFit(e); } }
+
+  // ── 화면 전환
+  function applyScene() {
+    var id = FIXED || live.scene;
+    document.querySelectorAll('.scene').forEach(function (s) { s.classList.toggle('on', s.dataset.scene === id); });
+    var on = document.querySelector('.scene.on');
+    if (on) document.body.style.setProperty('--bg', getComputedStyle(on).backgroundImage);
+  }
+
+  // ── 대기화면 타이머
+  var clock = document.getElementById('clock'), clockTimer = 0;
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function tick() {
+    clearTimeout(clockTimer);
+    if (!live.timer) { clock.textContent = ''; return; }
+    var left = live.timer - serverNow(), s = Math.max(0, Math.ceil(left / 1000));
+    var h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
+    clock.textContent = (h > 0 ? h + ':' + pad(m) : pad(m)) + ':' + pad(s % 60);
+    if (s > 0) clockTimer = setTimeout(tick, left % 1000 || 1000);
+  }
+
+  // ── 대진표
+  var bracket = document.getElementById('bracket'), slotEls = {};
+  Object.keys(SLOTS).forEach(function (round) {
+    SLOTS[round].forEach(function (r, i) {
+      var s = el('slot ' + (round === 'r2' ? 'small' : 'big'), r, bracket);
+      s.innerHTML = '<span class="name"></span><span class="sum"></span>';
+      slotEls[round + '-' + i] = s;
+    });
+  });
+  function applyBracket() {
+    var g = derive(live);
+    Object.keys(slotEls).forEach(function (k) {
+      var p = k.split('-'), round = p[0], i = +p[1], s = slotEls[k];
+      var tid = g[round][i], mid = SLOT_MATCH[round][i], name = teamName(tid);
+      var v = tid && mid ? live.matches[mid].sum[tid] : null;
+      var sum = typeof v === 'number' ? (mid === 'm5' ? v + '승' : fmtScore(v)) : '';
+      var had = s.classList.contains('has-sum');
+      s.classList.toggle('has-sum', !!sum);
+      s.classList.toggle('win', !!name && (mid ? g.win[mid] === tid : true));
+      s.lastChild.textContent = sum;
+      if (s.firstChild.textContent !== name || had !== !!sum) { s.firstChild.textContent = name; shrinkToFit(s.firstChild); }
+    });
+  }
+
+  // ── 트랙리스트
+  var track = document.getElementById('track'), cards = [], cardCount = 0;
+  var leftEl = track.querySelector('.team.left'), rightEl = track.querySelector('.team.right');
+  function buildCards(n) {
+    cards.forEach(function (c) { c.jacket.remove(); c.info.remove(); });
+    cards = CARDS[n].map(function (x) {
+      var c = { jacket: el('card jacket', [x, CARD_TOP, CARD_W, JACKET_H], track), info: el('card info', [x, CARD_TOP + JACKET_H, CARD_W, INFO_H], track) };
+      c.jacket.innerHTML = '<img alt=""><span></span>';
+      c.info.innerHTML = '<span class="by"></span><span class="title"></span><span class="base"></span>';
+      c.img = c.jacket.firstChild; c.mark = c.jacket.lastChild;
+      c.by = c.info.children[0]; c.title = c.info.children[1]; c.base = c.info.children[2];
+      return c;
+    });
+    cardCount = n;
+  }
+  function setJacket(c, song) {
+    var src = song ? jacketUrl(song) : '';
+    if (src) { if (c.img.getAttribute('src') !== src) c.img.src = src; } else c.img.removeAttribute('src');
+    c.mark.textContent = song ? '' : '?';
+  }
+  function showBase(c, v) { c.base.innerHTML = '<small>기준 점수</small>' + (v ? fmtScore(v) : '?'); }
+
+  // 기준점수 릴: 추첨 직후 받은 값이면 남은 시간 동안 숫자를 돌리다 멈춥니다
+  function rollBase(c, game) {
+    var key = live.cur + ':' + game.at + ':' + game.base;
+    if (c.rollKey === key) return;
+    c.rollKey = key;
+    cancelAnimationFrame(c.raf);
+    c.base.classList.remove('rolling');
+    var end = (game.at || 0) + REEL_MS;
+    if (!game.base || serverNow() >= end) return showBase(c, game.base);
+    c.base.classList.add('rolling');
+    var last = 0, steps = (BASE_MAX - BASE_MIN) / BASE_STEP + 1;
+    (function frame(t) {
+      var left = end - serverNow();
+      if (left <= 0) { c.base.classList.remove('rolling'); return showBase(c, game.base); }
+      // 끝에 가까울수록 느리게 바뀝니다
+      if (t - last > 40 + 260 * (1 - left / REEL_MS) ** 2) {
+        last = t;
+        showBase(c, BASE_MIN + Math.floor(Math.random() * steps) * BASE_STEP);
+      }
+      c.raf = requestAnimationFrame(frame);
+    })(0);
+  }
+
+  // 결승 3곡 추첨 릴: 후보 자켓을 돌리다 칸마다 차례로 멈춥니다
+  var drawRaf = 0, drawnAt = 0;
+  function curMatch() { return live.matches[live.cur] || normLive(null).matches.m1; }
+  function stopDraw() { cancelAnimationFrame(drawRaf); drawnAt = 0; cards.forEach(function (c) { c.stopAt = 0; }); }
+  function startDraw(m) {
+    if (drawnAt === m.drawAt) return;
+    stopDraw();
+    drawnAt = m.drawAt;
+    if (!m.drawAt || !m.pool.length || serverNow() >= m.drawAt + DRAW_STOP[DRAW_STOP.length - 1]) return;
+    cards.forEach(function (c, i) { c.stopAt = m.drawAt + DRAW_STOP[i]; });
+    var last = 0, k = 0;
+    (function frame(t) {
+      var now = serverNow(), turn = t - last > 90;
+      if (turn) { last = t; k++; }
+      cards.forEach(function (c, i) {
+        if (!c.stopAt) return;
+        if (now >= c.stopAt) { c.stopAt = 0; fillCard(c, curMatch().games[i] || {}, curMatch()); return; }
+        if (!turn) return;
+        setJacket(c, m.pool[(k + i * 2) % m.pool.length]);
+        c.by.textContent = c.title.textContent = c.base.textContent = '';
+        c.rollKey = '';
+      });
+      if (cards.some(function (c) { return c.stopAt; })) drawRaf = requestAnimationFrame(frame);
+    })(0);
+  }
+
+  function fillCard(c, game, m) {
+    setJacket(c, game.song);
+    c.by.textContent = game.by ? teamName(game.by) + ' 선곡' : '';
+    c.title.textContent = game.song ? game.song.n : '';
+    rollBase(c, game);
+    // 승부가 난 뒤 하지 않은 판은 흐리게
+    c.jacket.classList.toggle('skip', !!m.win && !game.base);
+    c.info.classList.toggle('skip', !!m.win && !game.base);
+  }
+
+  function applyTrack() {
+    var info = MATCHES.filter(function (x) { return x.id === live.cur; })[0];
+    var final = !!info && info.stage === 'f', n = final ? 3 : 2;
+    track.classList.toggle('final', final);
+    if (cardCount !== n) buildCards(n);
+    var ids = info ? derive(live).teams[info.id] : ['', ''];
+    setText(leftEl, teamName(ids[0])); setText(rightEl, teamName(ids[1]));
+    var m = curMatch();
+    if (final) startDraw(m);
+    cards.forEach(function (c, i) { if (!c.stopAt) fillCard(c, m.games[i] || {}, m); });
+  }
+
+  function apply() { applyScene(); tick(); applyBracket(); applyTrack(); }
+
+  onValue(roomRef('live'), function (s) {
+    var prev = live.cur;
+    live = normLive(s.val());
+    if (live.cur !== prev) stopDraw();
+    apply();
+  });
+  onValue(roomRef('teams'), function (s) { teams = s.val() || {}; applyBracket(); applyTrack(); });
+
+  function fit() {
+    var s = Math.min(innerWidth / 1920, innerHeight / 1080);
+    stage.style.transform = 'translate(' + (innerWidth - 1920 * s) / 2 + 'px,' + (innerHeight - 1080 * s) / 2 + 'px) scale(' + s + ')';
+  }
+  addEventListener('resize', fit);
+  fit();
+  apply();
+  // 웹폰트가 늦게 로드되면 폭이 바뀌므로 한 번 더 맞춥니다
+  if (document.fonts) document.fonts.ready.then(function () { document.querySelectorAll('.slot .name, .team').forEach(shrinkToFit); });
+</script>
+</body>
+</html>

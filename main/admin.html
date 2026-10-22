@@ -12,6 +12,28 @@
   .team .nick.bad { color: var(--danger); }
   .picks h3 { font-size: 14px; margin: 12px 0 0; color: var(--muted); }
   @media (max-width: 520px) { .team .members { grid-template-columns: 1fr; } }
+
+  .tabs { display: flex; gap: 6px; margin: 12px 0; }
+  button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  .matches { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; }
+  .matches button { text-align: left; line-height: 1.3; }
+  .matches small { display: block; font-size: 12px; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .onair { color: var(--danger); font-weight: 700; font-size: 12px; }
+  .on .onair { color: inherit; }
+  .r1 { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; }
+  select { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 8px; min-width: 0; }
+  input[type=time] { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+  .game { border-top: 1px solid var(--line); padding: 12px 0; }
+  .game.locked { opacity: .5; }
+  .game .base { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .sides { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+  .side h3 { font-size: 14px; margin: 0 0 4px; }
+  .side label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); margin: 4px 0; }
+  .side label span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .side input { width: 120px; text-align: right; font-variant-numeric: tabular-nums; }
+  .num { font-variant-numeric: tabular-nums; }
+  .lead { color: var(--ok); font-weight: 700; }
+  @media (max-width: 520px) { .sides { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -21,15 +43,18 @@
 </main>
 
 <script type="module">
-  import { auth, ROOM, AUTH_URL, STAGES, roomRef, esc, jacketUrl, fmtTime, slots, pickSong } from './common.js';
+  import { auth, ROOM, AUTH_URL, STAGES, MATCHES, SCENES, BASE_MIN, BASE_MAX, BASE_STEP, roomRef, esc, jacketUrl, fmtTime, fmtScore, slots, pickSong, normLive, derive, serverNow } from './common.js';
   import { signInWithCustomToken, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-  import { onValue, set, remove, update } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
+  import { onValue, set, remove, update, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
 
   var KEY_STORE = 'cisne-admin-key';
   var app = document.getElementById('app');
-  var state = { config: {}, teams: {}, picks: {} };
+  var state = { config: {}, teams: {}, picks: {}, live: {}, scores: {} };
   var drafts = {};          // 저장 전 입력값 { <팀ID>: { name, ids: [a, b], nicks: { id: 닉네임|null } } }
+  var typing = {};          // 저장 전 점수 입력값 { data-k: 글자 }
   var notice = '', subs = [];
+  var tab = location.hash === '#game' ? 'game' : 'teams';
+  var edit = '';            // 경기 진행 탭에서 보고 있는 경기
 
   function key() { try { return sessionStorage.getItem(KEY_STORE) || ''; } catch (e) { return ''; } }
   // 403이어도 우리 서버가 키를 거부한 것({error:'key'})인지, 프록시가 막은 것인지 구분합니다
@@ -39,8 +64,12 @@
   }
   function setKey(v) { try { v ? sessionStorage.setItem(KEY_STORE, v) : sessionStorage.removeItem(KEY_STORE); } catch (e) { /* 저장 안 됨 */ } }
 
+  // 다시 그려도 입력 중이던 칸의 포커스와 커서를 유지합니다
   function show(html) {
+    var a = document.activeElement, k = a && a.dataset && a.dataset.k, pos = k ? a.selectionStart : 0;
     app.innerHTML = (notice ? '<p class="msg ' + notice.cls + '">' + esc(notice.text) + '</p>' : '') + html;
+    var e = k && app.querySelector('[data-k="' + k + '"]');
+    if (e) { e.focus(); try { e.setSelectionRange(pos, pos); } catch (x) { /* 커서 없는 입력 */ } }
   }
   function say(cls, text) { notice = { cls: cls, text: text }; render(); }
 
@@ -113,6 +142,13 @@
 
   function render() {
     if (!key()) return;
+    var html = '<nav class="tabs"><button type="button" data-act="tab" data-tab="teams"' + (tab === 'teams' ? ' class="on"' : '') + '>팀·자선곡</button>' +
+      '<button type="button" data-act="tab" data-tab="game"' + (tab === 'game' ? ' class="on"' : '') + '>경기 진행</button>' +
+      '<span class="grow"></span><button type="button" data-act="logout">로그아웃</button></nav>';
+    show(html + (tab === 'game' ? gameHtml() : teamsHtml()));
+  }
+
+  function teamsHtml() {
     var dl = state.config.deadline || 0;
     var local = dl ? new Date(dl + 9 * 3600000).toISOString().slice(0, 16) : '';
     var html = '<div class="card"><h2>자선곡 마감</h2><div class="row">' +
@@ -121,13 +157,285 @@
       '<p class="hint">선수 입력 주소: <a href="pick.html">pick.html</a> · 마감 전에는 선수가, 마감 후에는 관리자만 바꿀 수 있습니다.</p></div>';
     var ids = teamIds().concat(Object.keys(drafts).filter(function (t) { return !state.teams[t]; }));
     ids.forEach(function (tid, i) { html += teamCard(tid, i); });
-    html += '<div class="row"><button type="button" data-act="add">팀 추가</button>' +
-      '<span class="grow"></span><button type="button" data-act="logout">로그아웃</button></div>';
-    show(html);
+    return html + '<div class="row"><button type="button" data-act="add">팀 추가</button></div>';
   }
+
+  // ── 경기 진행 탭
+
+  function teamName(tid) {
+    var t = tid && state.teams[tid];
+    if (!t) return '';
+    return t.name || Object.keys(t.members || {}).map(function (k) { return t.members[k]; }).join(' · ');
+  }
+  function matchInfo(mid) { return MATCHES.filter(function (m) { return m.id === mid; })[0]; }
+  function gameCount(mid) { return matchInfo(mid).stage === 'f' ? 3 : 2; }
+
+  // 판의 팀 합산 점수 (두 선수 점수가 모두 있어야 계산)
+  function teamTotal(scores, mid, i, tid) {
+    var sc = ((scores[mid] || {})[i]) || {}, ms = Object.keys((state.teams[tid] || {}).members || {});
+    if (ms.length !== 2 || ms.some(function (u) { return typeof sc[u] !== 'number'; })) return null;
+    return sc[ms[0]] + sc[ms[1]];
+  }
+  // 판의 획득 점수 |기준 − 합산|
+  function gameDiff(live, scores, mid, i, tid) {
+    var g = live.matches[mid].games[i] || {}, t = teamTotal(scores, mid, i, tid);
+    return g.base && t != null ? Math.abs(g.base - t) : null;
+  }
+  // 대진표 점수: 6강·4강은 획득 점수 합(작을수록 유리), 결승은 판마다 차이가 작은 팀의 승수
+  function matchSum(live, scores, mid) {
+    var ids = derive(live).teams[mid], out = {};
+    if (!ids[0] || !ids[1]) return out;
+    for (var i = 0; i < gameCount(mid); i++) {
+      var d = ids.map(function (tid) { return gameDiff(live, scores, mid, i, tid); });
+      if (matchInfo(mid).stage === 'f') {
+        if (d[0] == null || d[1] == null) continue;
+        ids.forEach(function (tid) { out[tid] = out[tid] || 0; });
+        if (d[0] !== d[1]) out[ids[d[0] < d[1] ? 0 : 1]]++;
+      } else {
+        ids.forEach(function (tid, k) { if (d[k] != null) out[tid] = (out[tid] || 0) + d[k]; });
+      }
+    }
+    return out;
+  }
+  // 결승에서 한 팀이 2승하면 남은 판은 하지 않습니다
+  function finalDone(live, mid) {
+    var s = live.matches[mid].sum;
+    return matchInfo(mid).stage === 'f' && Object.keys(s).some(function (t) { return s[t] >= 2; });
+  }
+
+  function setPath(obj, path, val) {
+    var ks = path.split('/'), o = obj;
+    for (var i = 0; i < ks.length - 1; i++) {
+      if (o[ks[i]] == null || typeof o[ks[i]] !== 'object') o[ks[i]] = {};
+      o = o[ks[i]];
+    }
+    if (val === null) delete o[ks[ks.length - 1]]; else o[ks[ks.length - 1]] = val;
+  }
+  // 경기 데이터를 바꾸면서 대진표 점수(sum)도 같이 다시 계산해 저장합니다
+  function saveMatch(mid, patch) {
+    var copy = JSON.parse(JSON.stringify({ live: state.live, scores: state.scores }));
+    Object.keys(patch).forEach(function (p) { setPath(copy, p, patch[p]); });
+    var live = normLive(copy.live);
+    live.matches[mid].sum = matchSum(live, copy.scores, mid);
+    patch['live/matches/' + mid + '/sum'] = live.matches[mid].sum;
+    return update(roomRef(), patch);
+  }
+
+  function randInt(n) { var a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; }
+  function randomBase() { return BASE_MIN + randInt((BASE_MAX - BASE_MIN) / BASE_STEP + 1) * BASE_STEP; }
+
+  // 6강·4강: 두 팀 자선곡을 판 순서대로 (왼쪽 팀 먼저)
+  function loadPicks(mid, ids, patch) {
+    var stage = matchInfo(mid).stage;
+    ids.forEach(function (tid, i) {
+      patch['live/matches/' + mid + '/games/' + i + '/song'] = (state.picks[tid] || {})[stage] || null;
+      patch['live/matches/' + mid + '/games/' + i + '/by'] = tid;
+    });
+    return patch;
+  }
+
+  function sceneHtml(live) {
+    var html = '<div class="card"><h2>방송 화면</h2><div class="row">';
+    SCENES.forEach(function (s) {
+      html += '<button type="button" data-act="scene" data-scene="' + s.id + '"' + (live.scene === s.id ? ' class="on"' : '') + '>' + s.name + '</button>';
+    });
+    var end = live.timer ? new Date(live.timer).toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' }) : '';
+    html += '</div><div class="row" style="margin-top:10px">타이머 <input type="time" id="timer">' +
+      '<button type="button" data-act="timer">설정</button>' +
+      '<button type="button" data-act="timer-in" data-min="5">5분 뒤</button><button type="button" data-act="timer-in" data-min="10">10분 뒤</button>' +
+      '<button type="button" data-act="timer-off">끄기</button><span class="hint">' + (end ? end + '까지' : '꺼짐') + '</span></div>' +
+      '<p class="hint">OBS 브라우저 소스(1920×1080): <a href="overlay.html" target="_blank">overlay.html</a>은 여기서 고른 화면을 따릅니다. ' +
+      'OBS 장면마다 따로 넣으려면 <code>overlay.html?scene=bracket</code>처럼 고정하세요 (standby·rule·bracket·track).</p></div>';
+    return html;
+  }
+
+  function bracketHtml(live) {
+    var ids = teamIds(), html = '<div class="card"><h2>6강 배치</h2><p class="hint">대진표 맨 아래 칸 왼쪽부터. 1·2번이 1경기, 3·4번이 2경기, 5·6번이 3경기(승자 결승 직행)입니다.</p><div class="r1">';
+    live.r1.forEach(function (cur, i) {
+      html += '<select data-r1="' + i + '"><option value="">' + (i + 1) + '번 — 비움</option>';
+      ids.forEach(function (tid) {
+        if (tid !== cur && live.r1.indexOf(tid) >= 0) return;
+        html += '<option value="' + tid + '"' + (tid === cur ? ' selected' : '') + '>' + (i + 1) + '번 — ' + esc(teamName(tid)) + '</option>';
+      });
+      html += '</select>';
+    });
+    return html + '</div></div>';
+  }
+
+  function scoreInput(mid, i, uid, nick, locked) {
+    var k = 's/' + mid + '/' + i + '/' + uid, v = ((state.scores[mid] || {})[i] || {})[uid];
+    var shown = k in typing ? typing[k] : (typeof v === 'number' ? fmtScore(v) : '');
+    return '<label><span>' + esc(nick) + '</span><input type="text" inputmode="numeric" data-k="' + k + '" value="' + esc(shown) + '"' + (locked ? ' disabled' : '') + '></label>';
+  }
+
+  function gameRow(live, mid, ids, i) {
+    var m = live.matches[mid], g = m.games[i] || {}, final = matchInfo(mid).stage === 'f';
+    var locked = finalDone(live, mid) && !g.base;
+    var html = '<div class="game' + (locked ? ' locked' : '') + '"><div class="slot">' +
+      (g.song ? '<img class="jacket" alt="" src="' + jacketUrl(g.song) + '">' : '<div class="jacket"></div>') +
+      '<div class="name"><b>' + (i + 1) + '판</b> ' + (g.song ? esc(g.song.n) : '<small>곡 없음</small>') +
+      (g.by ? '<small>' + esc(teamName(g.by)) + ' 선곡</small>' : '') + '</div>' +
+      '<div><div class="hint">기준 점수</div><div class="base">' + (g.base ? fmtScore(g.base) : '—') + '</div></div>' +
+      '<button type="button" data-act="roll" data-i="' + i + '"' + (!g.song || locked ? ' disabled' : '') + '>' + (g.base ? '다시 추첨' : '기준점수 추첨') + '</button></div>';
+    var d = ids.map(function (tid) { return gameDiff(live, state.scores, mid, i, tid); });
+    html += '<div class="sides">';
+    ids.forEach(function (tid, k) {
+      var members = (state.teams[tid] || {}).members || {}, total = teamTotal(state.scores, mid, i, tid);
+      var win = d[0] != null && d[1] != null && d[k] < d[1 - k];
+      html += '<div class="side"><h3>' + esc(teamName(tid)) + '</h3>';
+      Object.keys(members).forEach(function (uid) { html += scoreInput(mid, i, uid, members[uid], locked); });
+      html += '<div class="hint num">합산 ' + (total == null ? '—' : fmtScore(total)) + ' · 차이 <span class="' + (win ? 'lead' : '') + '">' +
+        (d[k] == null ? '—' : fmtScore(d[k])) + '</span>' + (final && win ? ' · <span class="lead">판 승리</span>' : '') + '</div></div>';
+    });
+    if (final && d[0] != null && d[0] === d[1]) html += '<p class="hint">이 판은 동점입니다.</p>';
+    return html + '</div></div>';
+  }
+
+  function matchHtml(live) {
+    var g = derive(live);
+    if (!edit) edit = live.cur || 'm1';
+    var html = '<div class="card"><h2>경기</h2><div class="matches">';
+    MATCHES.forEach(function (x) {
+      var t = g.teams[x.id];
+      html += '<button type="button" data-act="edit" data-mid="' + x.id + '"' + (edit === x.id ? ' class="on"' : '') + '>' + x.name +
+        (live.cur === x.id ? ' <span class="onair">방송 중</span>' : '') +
+        '<small>' + (t[0] || t[1] ? esc(teamName(t[0]) || '?') + ' vs ' + esc(teamName(t[1]) || '?') : '미정') + '</small></button>';
+    });
+    html += '</div>';
+
+    var info = matchInfo(edit), ids = g.teams[edit], m = live.matches[edit], final = info.stage === 'f';
+    if (!ids[0] || !ids[1]) return html + '<p class="hint">' + (edit === 'm4' || edit === 'm5' ? '앞 경기 승자가 정해지면 진행할 수 있습니다.' : '6강 배치에서 두 팀을 정하세요.') + '</p></div>';
+
+    html += '<h2 style="margin-top:16px">' + info.name + ' — ' + esc(teamName(ids[0])) + ' vs ' + esc(teamName(ids[1])) + '</h2><div class="row">' +
+      '<button type="button" class="primary" data-act="onair">트랙리스트에 띄우기</button>';
+    if (final) html += '<button type="button" data-act="draw">' + (m.pool.length ? '3곡 다시 추첨' : '결승 3곡 추첨') + '</button>';
+    else html += '<button type="button" data-act="load">자선곡 다시 불러오기</button><button type="button" data-act="swap">판 순서 바꾸기</button>';
+    html += '</div>';
+    if (final) html += '<p class="hint">후보 ' + m.pool.length + '곡: ' + (m.pool.map(function (s) { return esc(s.n); }).join(', ') || '추첨 전') + '</p>';
+
+    for (var i = 0; i < gameCount(edit); i++) html += gameRow(live, edit, ids, i);
+
+    var lead = '';
+    if (ids.every(function (t) { return typeof m.sum[t] === 'number'; }) && m.sum[ids[0]] !== m.sum[ids[1]]) {
+      lead = ids[(final ? m.sum[ids[0]] > m.sum[ids[1]] : m.sum[ids[0]] < m.sum[ids[1]]) ? 0 : 1];
+    }
+    html += '<div class="game"><div class="row">';
+    ids.forEach(function (tid) {
+      var v = m.sum[tid];
+      html += '<span class="grow num' + (lead === tid ? ' lead' : '') + '">' + esc(teamName(tid)) + ': ' +
+        (typeof v !== 'number' ? '—' : final ? v + '승' : '획득 점수 합 ' + fmtScore(v)) + '</span>';
+    });
+    html += '</div>' + (ids.every(function (t) { return typeof m.sum[t] === 'number'; }) && !lead ? '<p class="hint">동점입니다. 재경기 방식은 아직 정하지 않았으니 승자를 직접 지정하세요.</p>' : '') +
+      '<div class="row" style="margin-top:8px">';
+    ids.forEach(function (tid) {
+      html += '<button type="button" data-act="win" data-tid="' + tid + '"' + (g.win[edit] === tid ? ' class="on"' : '') + '>' + esc(teamName(tid)) + ' 승자 확정</button>';
+    });
+    html += (m.win ? '<button type="button" data-act="unwin">승자 해제</button>' : '') + '</div></div>';
+    return html + '</div>';
+  }
+
+  function gameHtml() {
+    var live = normLive(state.live);
+    return sceneHtml(live) + bracketHtml(live) + matchHtml(live);
+  }
+
+  async function gameAction(act, b) {
+    var live = normLive(state.live), u = {}, base = 'live/matches/' + edit + '/';
+    if (act === 'scene') return set(roomRef('live/scene'), b.dataset.scene);
+    if (act === 'timer-off') return remove(roomRef('live/timer'));
+    if (act === 'timer-in') return set(roomRef('live/timer'), serverNow() + b.dataset.min * 60000);
+    if (act === 'timer') {
+      var t = document.getElementById('timer').value;
+      if (!t) return say('error', '시각을 입력하세요.');
+      var day = new Date(serverNow() + 9 * 3600000).toISOString().slice(0, 10);
+      return set(roomRef('live/timer'), Date.parse(day + 'T' + t + ':00+09:00'));
+    }
+    if (act === 'edit') { edit = b.dataset.mid; notice = ''; return render(); }
+
+    var ids = derive(live).teams[edit], m = live.matches[edit];
+    if (act === 'onair') {
+      u['live/cur'] = edit;
+      u['live/scene'] = 'track';
+      // 처음 띄우는 6강·4강 경기는 자선곡을 함께 불러옵니다
+      if (matchInfo(edit).stage !== 'f' && !m.games.some(function (x) { return x.song; })) loadPicks(edit, ids, u);
+      return update(roomRef(), u);
+    }
+    if (act === 'load') {
+      if (m.games.some(function (x) { return x.base; }) && !confirm('자선곡을 왼쪽 팀부터 다시 불러올까요? 기준점수와 점수는 그대로 둡니다.')) return;
+      return update(roomRef(), loadPicks(edit, ids, u));
+    }
+    if (act === 'swap') {
+      u[base + 'games'] = [m.games[1] || null, m.games[0] || null];
+      var sc = state.scores[edit] || {};
+      u['scores/' + edit] = { 0: sc[1] || null, 1: sc[0] || null };
+      return saveMatch(edit, u);
+    }
+    if (act === 'draw') {
+      if (m.pool.length && !confirm('결승 3곡을 다시 추첨할까요? 기준점수와 입력한 점수가 지워집니다.')) return;
+      // 두 팀 결승 후보를 모으고 같은 곡은 한 번만 넣습니다
+      var pool = [], by = {};
+      ids.forEach(function (tid) {
+        slots(state.picks[tid], STAGES[2]).forEach(function (c) { if (c && !(c.s in by)) { by[c.s] = tid; pool.push(c); } });
+      });
+      if (pool.length < 3) return say('error', '결승 후보곡이 3곡보다 적습니다 (' + pool.length + '곡). 팀·자선곡 탭에서 확인하세요.');
+      var left = pool.slice(), games = [];
+      for (var i = 0; i < 3; i++) { var c = left.splice(randInt(left.length), 1)[0]; games.push({ song: c, by: by[c.s] }); }
+      u[base + 'pool'] = pool;
+      u[base + 'games'] = games;
+      u[base + 'drawAt'] = serverTimestamp();
+      u[base + 'win'] = null;
+      u['scores/' + edit] = null;
+      u['live/cur'] = edit;
+      u['live/scene'] = 'track';
+      return saveMatch(edit, u);
+    }
+    if (act === 'roll') {
+      var i = Number(b.dataset.i);
+      if (m.games[i].base && !confirm((i + 1) + '판 기준점수를 다시 추첨할까요?')) return;
+      u[base + 'games/' + i + '/base'] = randomBase();
+      u[base + 'games/' + i + '/at'] = serverTimestamp();
+      return saveMatch(edit, u);
+    }
+    if (act === 'win') return set(roomRef(base + 'win'), b.dataset.tid);
+    if (act === 'unwin') return remove(roomRef(base + 'win'));
+  }
+
+  async function saveScore(k, text) {
+    var p = k.split('/'), mid = p[1], digits = text.replace(/[^\d]/g, '');
+    var v = digits ? Number(digits) : null;
+    if (v != null && v > 9999999) return say('error', '점수가 너무 큽니다.');
+    var u = {};
+    u['scores/' + mid + '/' + p[2] + '/' + p[3]] = v;
+    // 저장하면서 바로 다시 그려지므로 입력 기록을 먼저 지웁니다
+    delete typing[k];
+    await saveMatch(mid, u);
+  }
+
+  app.addEventListener('change', async function (e) {
+    try {
+      if (e.target.dataset.r1 != null) await set(roomRef('live/r1/' + e.target.dataset.r1), e.target.value || null);
+    } catch (err) {
+      say('error', /permission/i.test(err.code + err.message) ? '권한이 없습니다. 다시 로그인하세요.' : err.message);
+    }
+  });
+  // 점수는 칸을 벗어날 때 저장합니다. 다시 그리면 칸이 새로 만들어져 change가 오지 않으므로 입력 기록(typing)으로 판단합니다
+  app.addEventListener('focusout', async function (e) {
+    var k = e.target.dataset.k;
+    if (!k || !(k in typing) || !e.target.isConnected) return;
+    try { await saveScore(k, typing[k]); } catch (err) {
+      say('error', /permission/i.test(err.code + err.message) ? '권한이 없습니다. 다시 로그인하세요.' : err.message);
+    }
+  });
+  // 점수 칸에서 Enter를 누르면 다음 칸으로
+  app.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' || !e.target.dataset.k) return;
+    var all = Array.from(app.querySelectorAll('input[data-k]:not(:disabled)')), next = all[all.indexOf(e.target) + 1];
+    if (next) next.focus(); else e.target.blur();
+  });
 
   // 입력값은 그리기 전에 드래프트로 옮겨 둡니다
   app.addEventListener('input', function (e) {
+    if (e.target.dataset.k) { typing[e.target.dataset.k] = e.target.value; return; }
     var card = e.target.closest('.team'), f = e.target.dataset.f;
     if (!card || !f) return;
     var d = draftOf(card.dataset.tid);
@@ -154,6 +462,8 @@
     var act = b.dataset.act, card = b.closest('.team'), tid = card && card.dataset.tid;
     try {
       if (act === 'logout') { setKey(''); await signOut(auth); return; }
+      if (act === 'tab') { tab = b.dataset.tab; history.replaceState(null, '', tab === 'game' ? '#game' : '#'); notice = ''; return render(); }
+      if (tab === 'game') { notice = ''; return await gameAction(act, b); }
       if (act === 'add') { draftOf(newTid()); notice = ''; return render(); }
       if (act === 'deadline') {
         var v = document.getElementById('deadline').value;
@@ -219,7 +529,7 @@
     if (!user || !key()) return loginScreen();
     var claims = (await user.getIdTokenResult()).claims;
     if (claims.admin !== ROOM) return loginScreen();
-    ['config', 'teams', 'picks'].forEach(function (k) {
+    ['config', 'teams', 'picks', 'live', 'scores'].forEach(function (k) {
       subs.push(onValue(roomRef(k), function (s) { state[k] = s.val() || {}; render(); },
         function (err) { say('error', '불러오지 못했습니다: ' + err.message); }));
     });
