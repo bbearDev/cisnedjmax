@@ -43,7 +43,7 @@
 </main>
 
 <script type="module">
-  import { auth, ROOM, AUTH_URL, STAGES, MATCHES, SCENES, BASE_MIN, BASE_MAX, BASE_STEP, roomRef, esc, jacketUrl, fmtTime, fmtScore, slots, pickSong, normLive, derive, serverNow } from './common.js';
+  import { auth, ROOM, AUTH_URL, STAGES, MATCHES, SCENES, FX_TYPES, FX_DIRS, FX_COLORS, FX_MS, BASE_MIN, BASE_MAX, BASE_STEP, roomRef, esc, jacketUrl, fmtTime, fmtScore, slots, pickSong, normLive, derive, serverNow } from './common.js';
   import { signInWithCustomToken, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
   import { onValue, set, remove, update, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
 
@@ -52,6 +52,7 @@
   var state = { config: {}, teams: {}, picks: {}, live: {}, scores: {} };
   var drafts = {};          // 저장 전 입력값 { <팀ID>: { name, ids: [a, b], nicks: { id: 닉네임|null } } }
   var typing = {};          // 저장 전 점수 입력값 { data-k: 글자 }
+  var timerDraft = {};      // 저장 전 타이머 입력값 { day, time } (다시 그려도 남도록)
   var notice = '', subs = [];
   var tab = location.hash === '#game' ? 'game' : 'teams';
   var edit = '';            // 경기 진행 탭에서 보고 있는 경기
@@ -234,18 +235,39 @@
     return patch;
   }
 
+  function options(list, cur) {
+    return list.map(function (o) { return '<option value="' + o.id + '"' + (String(o.id) === String(cur) ? ' selected' : '') + '>' + o.name + '</option>'; }).join('');
+  }
+  function fxHtml(fx) {
+    var html = '<div class="row" style="margin-top:10px">전환 효과 <select data-fx="type">' + options(FX_TYPES, fx.type) + '</select>';
+    if (fx.type === 'swipe' || fx.type === 'slide') html += '<select data-fx="dir">' + options(FX_DIRS, fx.dir) + '</select>';
+    if (fx.type === 'color') html += '<select data-fx="color">' + options(FX_COLORS, fx.color) + '</select>';
+    if (fx.type !== 'cut') html += '<select data-fx="ms">' + options(FX_MS.map(function (ms) { return { id: ms, name: ms / 1000 + '초' }; }), fx.ms) + '</select>';
+    return html + '</div>';
+  }
+
+  function kstDay(ms) { return new Date(ms + 9 * 3600000).toISOString().slice(0, 10); }
+
   function sceneHtml(live) {
     var html = '<div class="card"><h2>방송 화면</h2><div class="row">';
     SCENES.forEach(function (s) {
       html += '<button type="button" data-act="scene" data-scene="' + s.id + '"' + (live.scene === s.id ? ' class="on"' : '') + '>' + s.name + '</button>';
     });
-    var end = live.timer ? new Date(live.timer).toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' }) : '';
-    html += '</div><div class="row" style="margin-top:10px">타이머 <input type="time" id="timer">' +
+    var end = '';
+    if (live.timer) {
+      var opt = { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' };
+      // 오늘이 아니면 날짜도 함께 보여 줍니다
+      if (kstDay(live.timer) !== kstDay(serverNow())) { opt.month = 'long'; opt.day = 'numeric'; }
+      end = new Date(live.timer).toLocaleString('ko-KR', opt);
+    }
+    html += '</div><div class="row" style="margin-top:10px">타이머 <input type="date" id="timer-day" value="' + (timerDraft.day || kstDay(serverNow())) + '">' +
+      '<input type="time" id="timer" value="' + (timerDraft.time || '') + '">' +
       '<button type="button" data-act="timer">설정</button>' +
       '<button type="button" data-act="timer-in" data-min="5">5분 뒤</button><button type="button" data-act="timer-in" data-min="10">10분 뒤</button>' +
       '<button type="button" data-act="timer-off">끄기</button><span class="hint">' + (end ? end + '까지' : '꺼짐') + '</span></div>' +
+      fxHtml(live.fx) +
       '<p class="hint">OBS 브라우저 소스(1920×1080): <a href="overlay.html" target="_blank">overlay.html</a>은 여기서 고른 화면을 따릅니다. ' +
-      'OBS 장면마다 따로 넣으려면 <code>overlay.html?scene=bracket</code>처럼 고정하세요 (standby·rule·bracket·track).</p></div>';
+      'OBS 장면마다 따로 넣으려면 <code>overlay.html?scene=bracket</code>처럼 고정하세요 (standby·rule·bracket·track·blank).</p></div>';
     return html;
   }
 
@@ -347,7 +369,9 @@
     if (act === 'timer') {
       var t = document.getElementById('timer').value;
       if (!t) return say('error', '시각을 입력하세요.');
-      var day = new Date(serverNow() + 9 * 3600000).toISOString().slice(0, 10);
+      // 날짜를 비우면 오늘
+      var day = document.getElementById('timer-day').value || kstDay(serverNow());
+      timerDraft = {};
       return set(roomRef('live/timer'), Date.parse(day + 'T' + t + ':00+09:00'));
     }
     if (act === 'edit') { edit = b.dataset.mid; notice = ''; return render(); }
@@ -414,6 +438,8 @@
   app.addEventListener('change', async function (e) {
     try {
       if (e.target.dataset.r1 != null) await set(roomRef('live/r1/' + e.target.dataset.r1), e.target.value || null);
+      var f = e.target.dataset.fx;
+      if (f) await set(roomRef('live/fx/' + f), f === 'ms' ? Number(e.target.value) : e.target.value);
     } catch (err) {
       say('error', /permission/i.test(err.code + err.message) ? '권한이 없습니다. 다시 로그인하세요.' : err.message);
     }
@@ -436,6 +462,8 @@
   // 입력값은 그리기 전에 드래프트로 옮겨 둡니다
   app.addEventListener('input', function (e) {
     if (e.target.dataset.k) { typing[e.target.dataset.k] = e.target.value; return; }
+    if (e.target.id === 'timer') { timerDraft.time = e.target.value; return; }
+    if (e.target.id === 'timer-day') { timerDraft.day = e.target.value; return; }
     var card = e.target.closest('.team'), f = e.target.dataset.f;
     if (!card || !f) return;
     var d = draftOf(card.dataset.tid);

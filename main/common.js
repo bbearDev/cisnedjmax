@@ -7,8 +7,9 @@
 //   곡 = { s: 곡 번호(V-ARCHIVE title), n: 곡 이름 }
 //
 //   live:   방송 화면이 읽는 공개 데이터 (쓰기는 관리자만)
-//     scene: 'standby' | 'rule' | 'bracket' | 'track'   오버레이에 띄울 화면
+//     scene: 'standby' | 'rule' | 'bracket' | 'track' | 'blank'   오버레이에 띄울 화면 (blank = 아무것도 없는 투명 화면)
 //     timer: 대기화면 타이머 종료 시각 (서버 ms)
+//     fx:    { type: 'cut'|'fade'|'swipe'|'slide'|'color', dir: 'left'|'right'|'up'|'down', color: CSS 색, ms }   화면 전환 효과
 //     r1:    [팀ID × 6]   6강 배치 (대진표 맨 아래 칸 왼쪽부터)
 //     cur:   'm1'~'m5'    트랙리스트에 띄울 경기
 //     matches: { m1~m5: {
@@ -56,8 +57,20 @@ export var SCENES = [
   { id: 'standby', name: '대기' },
   { id: 'rule', name: '게임설명' },
   { id: 'bracket', name: '대진표' },
-  { id: 'track', name: '트랙리스트' }
+  { id: 'track', name: '트랙리스트' },
+  { id: 'blank', name: '빈 화면' }
 ];
+// 화면 전환 효과 (OBS 기본 전환과 같은 동작)
+export var FX_TYPES = [
+  { id: 'cut', name: '컷' },
+  { id: 'fade', name: '페이드' },
+  { id: 'swipe', name: '스와이프' },
+  { id: 'slide', name: '슬라이드' },
+  { id: 'color', name: '색상으로 페이드' }
+];
+export var FX_DIRS = [{ id: 'left', name: '← 왼쪽' }, { id: 'right', name: '→ 오른쪽' }, { id: 'up', name: '↑ 위' }, { id: 'down', name: '↓ 아래' }];
+export var FX_COLORS = [{ id: '#000000', name: '검정' }, { id: '#ffffff', name: '흰색' }, { id: '#4a1458', name: '보라' }];
+export var FX_MS = [300, 500, 800, 1000, 1500];
 export var BASE_MIN = 1400000, BASE_MAX = 2000000, BASE_STEP = 10000;
 // 추첨을 누른 뒤 이 시간 안에 화면을 연 오버레이만 릴을 돌립니다
 export var REEL_MS = 3000;
@@ -72,7 +85,9 @@ function list(v) {
 }
 export function normLive(v) {
   v = v || {};
-  var out = { scene: v.scene || 'standby', timer: v.timer || 0, r1: [], cur: v.cur || '', matches: {} };
+  var fx = v.fx || {};
+  var out = { scene: v.scene || 'standby', timer: v.timer || 0, r1: [], cur: v.cur || '', matches: {},
+    fx: { type: fx.type || 'fade', dir: fx.dir || 'left', color: fx.color || '#000000', ms: fx.ms == null ? 500 : fx.ms } };
   var r1 = v.r1 || {};
   for (var i = 0; i < 6; i++) out.r1[i] = r1[i] || '';
   MATCHES.forEach(function (m) {
