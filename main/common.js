@@ -7,7 +7,7 @@
 //   곡 = { s: 곡 번호(V-ARCHIVE title), n: 곡 이름 }
 //
 //   live:   방송 화면이 읽는 공개 데이터 (쓰기는 관리자만)
-//     scene: 'standby' | 'rule' | 'bracket' | 'track' | 'blank'   오버레이에 띄울 화면 (blank = 아무것도 없는 투명 화면)
+//     scene: 'standby' | 'rule' | 'bracket' | 'track' | 'blank'   오버레이에 띄울 화면 (blank = 로고와 배경만 있는 화면)
 //     timer: 대기화면 타이머 종료 시각 (서버 ms)
 //     fx:    { type: 'cut'|'fade'|'swipe'|'slide'|'color', dir: 'left'|'right'|'up'|'down', color: CSS 색, ms }   화면 전환 효과
 //     r1:    [팀ID × 6]   6강 배치 (대진표 맨 아래 칸 왼쪽부터)

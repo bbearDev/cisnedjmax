@@ -22,6 +22,7 @@
   .veil { position: absolute; inset: 0; z-index: 3; opacity: 0; pointer-events: none; }
   .scene[data-scene=standby] { background-image: url('main_overlay/1standby.png'); }
   .scene[data-scene=rule] { background-image: url('main_overlay/2rule.png'); }
+  .scene[data-scene=blank] { background-image: url('main_overlay/blank.png'); }
   .scene[data-scene=bracket] { background-image: url('main_overlay/4bracket.png'); }
   .scene[data-scene=track] { background-image: url('main_overlay/5track_other.png'); }
   .scene[data-scene=track].final { background-image: url('main_overlay/5track_final.png'); }
@@ -150,11 +151,9 @@
     var fx = live.fx, opt = { duration: fx.ms, easing: 'ease-in-out' }, off = OFF[fx.dir] || OFF.left;
     if (!from || fx.type === 'cut' || !fx.ms) return;
     from.classList.add('out');
-    // 빈 화면은 투명이라 덮어서는 가려지지 않으므로 이전 화면이 빠져나가게 합니다
-    var clear = to.dataset.scene === 'blank';
-    if (fx.type === 'swipe' && !clear) {
+    if (fx.type === 'swipe') {
       anims.push(to.animate([{ transform: move(off, 1) }, { transform: 'none' }], opt));
-    } else if (fx.type === 'swipe' || fx.type === 'slide') {
+    } else if (fx.type === 'slide') {
       anims.push(to.animate([{ transform: move(off, 1) }, { transform: 'none' }], opt));
       anims.push(from.animate([{ transform: 'none' }, { transform: move(off, -1) }], opt));
     } else if (fx.type === 'color') {
@@ -162,10 +161,8 @@
       veil.style.background = fx.color;
       anims.push(veil.animate([{ opacity: 0 }, { opacity: 1, offset: 0.5 }, { opacity: 0 }], { duration: fx.ms }));
       anims.push(to.animate([{ opacity: 0 }, { opacity: 0, offset: 0.5 }, { opacity: 1, offset: 0.5 }, { opacity: 1 }], { duration: fx.ms }));
-      anims.push(from.animate([{ opacity: 1 }, { opacity: 1, offset: 0.5 }, { opacity: 0, offset: 0.5 }, { opacity: 0 }], { duration: fx.ms }));
     } else {
       anims.push(to.animate([{ opacity: 0 }, { opacity: 1 }], opt));
-      if (clear) anims.push(from.animate([{ opacity: 1 }, { opacity: 0 }], opt));
     }
     var mine = anims;
     Promise.all(mine.map(function (a) { return a.finished; })).then(function () {
