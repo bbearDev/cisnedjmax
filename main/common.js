@@ -9,7 +9,8 @@
 //   live:   방송 화면이 읽는 공개 데이터 (쓰기는 관리자만)
 //     scene: 'standby' | 'rule' | 'bracket' | 'track' | 'blank'   오버레이에 띄울 화면 (blank = 로고와 배경만 있는 화면)
 //     timer: 대기화면 타이머 종료 시각 (서버 ms)
-//     fx:    { type: 'cut'|'fade'|'swipe'|'slide'|'color', dir: 'left'|'right'|'up'|'down', color: CSS 색, ms }   화면 전환 효과
+//     fx:    { <화면>: { type: 'cut'|'fade'|'swipe'|'slide'|'color', dir: 'left'|'right'|'up'|'down', color: CSS 색, ms } }
+//            화면마다 그 화면으로 바뀔 때의 전환 효과
 //     r1:    [팀ID × 6]   6강 배치 (대진표 맨 아래 칸 왼쪽부터)
 //     cur:   'm1'~'m5'    트랙리스트에 띄울 경기
 //     matches: { m1~m5: {
@@ -85,9 +86,13 @@ function list(v) {
 }
 export function normLive(v) {
   v = v || {};
-  var fx = v.fx || {};
-  var out = { scene: v.scene || 'standby', timer: v.timer || 0, r1: [], cur: v.cur || '', matches: {},
-    fx: { type: fx.type || 'fade', dir: fx.dir || 'left', color: fx.color || '#000000', ms: fx.ms == null ? 500 : fx.ms } };
+  var out = { scene: v.scene || 'standby', timer: v.timer || 0, r1: [], cur: v.cur || '', matches: {}, fx: {} };
+  // 예전에는 모든 화면이 효과 하나({ type, … })를 같이 썼습니다. 남아 있으면 화면별 설정이 없는 칸의 기본값으로 씁니다
+  var fx = v.fx || {}, shared = typeof fx.type === 'string' ? fx : {};
+  SCENES.forEach(function (s) {
+    var f = Object.assign({}, shared, fx[s.id]);
+    out.fx[s.id] = { type: f.type || 'fade', dir: f.dir || 'left', color: f.color || '#000000', ms: f.ms == null ? 500 : f.ms };
+  });
   var r1 = v.r1 || {};
   for (var i = 0; i < 6; i++) out.r1[i] = r1[i] || '';
   MATCHES.forEach(function (m) {

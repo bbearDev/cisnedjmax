@@ -129,7 +129,7 @@
   }
   function setText(e, t) { if (e.textContent !== t) { e.textContent = t; shrinkToFit(e); } }
 
-  // ── 화면 전환 (효과는 관리 페이지에서 고른 live.fx)
+  // ── 화면 전환 (효과는 관리 페이지에서 화면마다 고른 live.fx[들어올 화면])
   var scenes = Array.from(document.querySelectorAll('.scene')), veil = document.getElementById('veil');
   var shown = '', anims = [];
   // 방향마다 새 화면이 들어오기 시작하는 위치 (left = 왼쪽으로 밀려감 → 오른쪽에서 들어옴)
@@ -148,7 +148,7 @@
     anims.forEach(function (a) { a.cancel(); });
     anims = [];
     scenes.forEach(function (s) { s.classList.toggle('on', s === to); s.classList.remove('out'); });
-    var fx = live.fx, opt = { duration: fx.ms, easing: 'ease-in-out' }, off = OFF[fx.dir] || OFF.left;
+    var fx = live.fx[to.dataset.scene], opt = { duration: fx.ms, easing: 'ease-in-out' }, off = OFF[fx.dir] || OFF.left;
     if (!from || fx.type === 'cut' || !fx.ms) return;
     from.classList.add('out');
     if (fx.type === 'swipe') {

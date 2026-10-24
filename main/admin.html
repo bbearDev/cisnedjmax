@@ -22,7 +22,9 @@
   .on .onair { color: inherit; }
   .r1 { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; }
   select { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 8px; min-width: 0; }
-  input[type=time] { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+  input[type=time], input[type=date] { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+  .fx { margin-top: 10px; display: grid; gap: 6px; }
+  .fx-name { width: 80px; font-weight: 700; }
   .game { border-top: 1px solid var(--line); padding: 12px 0; }
   .game.locked { opacity: .5; }
   .game .base { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -238,11 +240,17 @@
   function options(list, cur) {
     return list.map(function (o) { return '<option value="' + o.id + '"' + (String(o.id) === String(cur) ? ' selected' : '') + '>' + o.name + '</option>'; }).join('');
   }
-  function fxHtml(fx) {
-    var html = '<div class="row" style="margin-top:10px">전환 효과 <select data-fx="type">' + options(FX_TYPES, fx.type) + '</select>';
-    if (fx.type === 'swipe' || fx.type === 'slide') html += '<select data-fx="dir">' + options(FX_DIRS, fx.dir) + '</select>';
-    if (fx.type === 'color') html += '<select data-fx="color">' + options(FX_COLORS, fx.color) + '</select>';
-    if (fx.type !== 'cut') html += '<select data-fx="ms">' + options(FX_MS.map(function (ms) { return { id: ms, name: ms / 1000 + '초' }; }), fx.ms) + '</select>';
+  // 화면마다 그 화면으로 바뀔 때의 전환 효과
+  function fxHtml(all) {
+    var html = '<div class="fx"><div class="hint">전환 효과 (그 화면으로 바뀔 때)</div>';
+    SCENES.forEach(function (s) {
+      var fx = all[s.id], k = s.id + '/';
+      html += '<div class="row"><span class="fx-name">' + s.name + '</span><select data-fx="' + k + 'type">' + options(FX_TYPES, fx.type) + '</select>';
+      if (fx.type === 'swipe' || fx.type === 'slide') html += '<select data-fx="' + k + 'dir">' + options(FX_DIRS, fx.dir) + '</select>';
+      if (fx.type === 'color') html += '<select data-fx="' + k + 'color">' + options(FX_COLORS, fx.color) + '</select>';
+      if (fx.type !== 'cut') html += '<select data-fx="' + k + 'ms">' + options(FX_MS.map(function (ms) { return { id: ms, name: ms / 1000 + '초' }; }), fx.ms) + '</select>';
+      html += '<button type="button" data-act="fx-all" data-scene="' + s.id + '">모든 화면에 적용</button></div>';
+    });
     return html + '</div>';
   }
 
@@ -298,7 +306,8 @@
       '<div class="name"><b>' + (i + 1) + '판</b> ' + (g.song ? esc(g.song.n) : '<small>곡 없음</small>') +
       (g.by ? '<small>' + esc(teamName(g.by)) + ' 선곡</small>' : '') + '</div>' +
       '<div><div class="hint">기준 점수</div><div class="base">' + (g.base ? fmtScore(g.base) : '—') + '</div></div>' +
-      '<button type="button" data-act="roll" data-i="' + i + '"' + (!g.song || locked ? ' disabled' : '') + '>' + (g.base ? '다시 추첨' : '기준점수 추첨') + '</button></div>';
+      '<button type="button" data-act="roll" data-i="' + i + '"' + (!g.song || locked ? ' disabled' : '') + '>' + (g.base ? '다시 추첨' : '기준점수 추첨') + '</button>' +
+      (g.base ? '<button type="button" data-act="unroll" data-i="' + i + '">초기화</button>' : '') + '</div>';
     var d = ids.map(function (tid) { return gameDiff(live, state.scores, mid, i, tid); });
     html += '<div class="sides">';
     ids.forEach(function (tid, k) {
@@ -364,6 +373,12 @@
   async function gameAction(act, b) {
     var live = normLive(state.live), u = {}, base = 'live/matches/' + edit + '/';
     if (act === 'scene') return set(roomRef('live/scene'), b.dataset.scene);
+    if (act === 'fx-all') {
+      // 이 화면의 효과를 모든 화면에 복사합니다 (예전 공용 설정은 지웁니다)
+      var src = normLive(state.live).fx[b.dataset.scene], all = {};
+      SCENES.forEach(function (s) { all[s.id] = src; });
+      return set(roomRef('live/fx'), all);
+    }
     if (act === 'timer-off') return remove(roomRef('live/timer'));
     if (act === 'timer-in') return set(roomRef('live/timer'), serverNow() + b.dataset.min * 60000);
     if (act === 'timer') {
@@ -420,6 +435,14 @@
       u[base + 'games/' + i + '/at'] = serverTimestamp();
       return saveMatch(edit, u);
     }
+    // 기준점수를 지웁니다. 입력한 선수 점수는 남고, 판 결과는 다시 추첨할 때까지 비워 둡니다
+    if (act === 'unroll') {
+      var j = Number(b.dataset.i);
+      if (!confirm((j + 1) + '판 기준점수를 지울까요? 방송 화면에는 ?로 나옵니다.')) return;
+      u[base + 'games/' + j + '/base'] = null;
+      u[base + 'games/' + j + '/at'] = null;
+      return saveMatch(edit, u);
+    }
     if (act === 'win') return set(roomRef(base + 'win'), b.dataset.tid);
     if (act === 'unwin') return remove(roomRef(base + 'win'));
   }
@@ -439,7 +462,7 @@
     try {
       if (e.target.dataset.r1 != null) await set(roomRef('live/r1/' + e.target.dataset.r1), e.target.value || null);
       var f = e.target.dataset.fx;
-      if (f) await set(roomRef('live/fx/' + f), f === 'ms' ? Number(e.target.value) : e.target.value);
+      if (f) await set(roomRef('live/fx/' + f), /\/ms$/.test(f) ? Number(e.target.value) : e.target.value);
     } catch (err) {
       say('error', /permission/i.test(err.code + err.message) ? '권한이 없습니다. 다시 로그인하세요.' : err.message);
     }
