@@ -13,7 +13,7 @@
   .picks h3 { font-size: 14px; margin: 12px 0 0; color: var(--muted); }
   @media (max-width: 520px) { .team .members { grid-template-columns: 1fr; } }
 
-  .tabs { display: flex; gap: 6px; margin: 12px 0; }
+  .tabs { display: flex; gap: 6px; margin: 12px 0; align-items: center; }
   button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
   .matches { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; }
   .matches button { text-align: left; line-height: 1.3; }
@@ -45,7 +45,7 @@
 </main>
 
 <script type="module">
-  import { auth, ROOM, AUTH_URL, STAGES, MATCHES, SCENES, FX_TYPES, FX_DIRS, FX_COLORS, FX_MS, BASE_MIN, BASE_MAX, BASE_STEP, roomRef, esc, jacketUrl, fmtTime, fmtScore, slots, pickSong, normLive, derive, serverNow } from './common.js';
+  import { auth, ROOM, AUTH_URL, STAGES, MATCHES, SCENES, FX_TYPES, FX_DIRS, FX_COLORS, FX_MS, BASE_MIN, BASE_MAX, BASE_STEP, roomRef, esc, jacketUrl, fmtTime, fmtScore, slots, pickSong, normLive, derive, serverNow, matchInfo, gameCount, teamTotal, gameDiff } from './common.js';
   import { signInWithCustomToken, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
   import { onValue, set, remove, update, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
 
@@ -147,7 +147,7 @@
     if (!key()) return;
     var html = '<nav class="tabs"><button type="button" data-act="tab" data-tab="teams"' + (tab === 'teams' ? ' class="on"' : '') + '>팀·자선곡</button>' +
       '<button type="button" data-act="tab" data-tab="game"' + (tab === 'game' ? ' class="on"' : '') + '>경기 진행</button>' +
-      '<span class="grow"></span><button type="button" data-act="logout">로그아웃</button></nav>';
+      '<span class="grow"></span><a href="view.html" target="_blank">진행자 화면</a><button type="button" data-act="logout">로그아웃</button></nav>';
     show(html + (tab === 'game' ? gameHtml() : teamsHtml()));
   }
 
@@ -170,26 +170,12 @@
     if (!t) return '';
     return t.name || Object.keys(t.members || {}).map(function (k) { return t.members[k]; }).join(' · ');
   }
-  function matchInfo(mid) { return MATCHES.filter(function (m) { return m.id === mid; })[0]; }
-  function gameCount(mid) { return matchInfo(mid).stage === 'f' ? 3 : 2; }
-
-  // 판의 팀 합산 점수 (두 선수 점수가 모두 있어야 계산)
-  function teamTotal(scores, mid, i, tid) {
-    var sc = ((scores[mid] || {})[i]) || {}, ms = Object.keys((state.teams[tid] || {}).members || {});
-    if (ms.length !== 2 || ms.some(function (u) { return typeof sc[u] !== 'number'; })) return null;
-    return sc[ms[0]] + sc[ms[1]];
-  }
-  // 판의 획득 점수 |기준 − 합산|
-  function gameDiff(live, scores, mid, i, tid) {
-    var g = live.matches[mid].games[i] || {}, t = teamTotal(scores, mid, i, tid);
-    return g.base && t != null ? Math.abs(g.base - t) : null;
-  }
   // 대진표 점수: 6강·4강은 획득 점수 합(작을수록 유리), 결승은 판마다 차이가 작은 팀의 승수
   function matchSum(live, scores, mid) {
     var ids = derive(live).teams[mid], out = {};
     if (!ids[0] || !ids[1]) return out;
     for (var i = 0; i < gameCount(mid); i++) {
-      var d = ids.map(function (tid) { return gameDiff(live, scores, mid, i, tid); });
+      var d = ids.map(function (tid) { return gameDiff(live, state.teams, scores, mid, i, tid); });
       if (matchInfo(mid).stage === 'f') {
         if (d[0] == null || d[1] == null) continue;
         ids.forEach(function (tid) { out[tid] = out[tid] || 0; });
@@ -308,10 +294,10 @@
       '<div><div class="hint">기준 점수</div><div class="base">' + (g.base ? fmtScore(g.base) : '—') + '</div></div>' +
       '<button type="button" data-act="roll" data-i="' + i + '"' + (!g.song || locked ? ' disabled' : '') + '>' + (g.base ? '다시 추첨' : '기준점수 추첨') + '</button>' +
       (g.base ? '<button type="button" data-act="unroll" data-i="' + i + '">초기화</button>' : '') + '</div>';
-    var d = ids.map(function (tid) { return gameDiff(live, state.scores, mid, i, tid); });
+    var d = ids.map(function (tid) { return gameDiff(live, state.teams, state.scores, mid, i, tid); });
     html += '<div class="sides">';
     ids.forEach(function (tid, k) {
-      var members = (state.teams[tid] || {}).members || {}, total = teamTotal(state.scores, mid, i, tid);
+      var members = (state.teams[tid] || {}).members || {}, total = teamTotal(state.teams, state.scores, mid, i, tid);
       var win = d[0] != null && d[1] != null && d[k] < d[1 - k];
       html += '<div class="side"><h3>' + esc(teamName(tid)) + '</h3>';
       Object.keys(members).forEach(function (uid) { html += scoreInput(mid, i, uid, members[uid], locked); });

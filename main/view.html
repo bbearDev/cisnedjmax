@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="ko" data-app="view">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>본선 진행 현황</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  main { max-width: 1200px; }
+  .top { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 12px 0; }
+  .chip { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 14px; }
+  .chip b { font-variant-numeric: tabular-nums; }
+  .chip.live { border-color: var(--danger); color: var(--danger); font-weight: 700; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+  .layout > * { margin: 0; }
+  .vs { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 800; margin: 0 0 4px; }
+  .vs span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .vs span:last-child { text-align: right; }
+  .vs small { font-size: 14px; color: var(--muted); font-weight: 600; flex: none; }
+  .total { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0 4px; }
+  .total div { background: var(--bg); border-radius: 8px; padding: 10px 12px; }
+  .total div:last-child { text-align: right; }
+  .total b { display: block; font-size: 26px; font-variant-numeric: tabular-nums; }
+  .game { border-top: 1px solid var(--line); padding: 12px 0; }
+  .game.skip { opacity: .45; }
+  .game .slot { border: 0; padding: 0; }
+  .base { text-align: right; }
+  .base b { display: block; font-size: 24px; font-variant-numeric: tabular-nums; }
+  .base .rolling { color: var(--muted); font-size: 16px; }
+  .sides { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+  .side { background: var(--bg); border-radius: 8px; padding: 8px 12px; }
+  .side h3 { font-size: 14px; margin: 0 0 4px; overflow-wrap: anywhere; }
+  .side p { display: flex; justify-content: space-between; gap: 8px; margin: 2px 0; font-size: 14px; }
+  .side p span:first-child { color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .side .sum { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 6px; }
+  .num { font-variant-numeric: tabular-nums; }
+  .lead { color: var(--ok); font-weight: 700; }
+  .win-badge { color: var(--ok); font-weight: 700; font-size: 13px; }
+  .matches { display: flex; flex-direction: column; gap: 6px; }
+  .matches button { text-align: left; line-height: 1.35; }
+  .matches button.on { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+  .matches small { display: block; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+  .matches .w { color: var(--ok); font-weight: 700; }
+  .onair { color: var(--danger); font-weight: 700; font-size: 12px; }
+  @media (max-width: 520px) { .sides, .total { grid-template-columns: 1fr; } .total div:last-child { text-align: left; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>본선 진행 현황</h1>
+  <p class="hint">읽기 전용입니다. 관리 페이지에서 바꾸면 바로 반영됩니다.</p>
+  <div id="app"><p class="hint">불러오는 중…</p></div>
+</main>
+
+<script type="module">
+  import { auth, ROOM, AUTH_URL, MATCHES, SCENES, REEL_MS, roomRef, esc, jacketUrl, fmtScore, normLive, derive, serverNow, matchInfo, gameCount, teamTotal, gameDiff } from './common.js';
+  import { signInWithCustomToken, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+  import { onValue } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
+
+  // 관리 페이지와 같은 비밀키로 로그인합니다 (선수별 점수는 관리자만 읽을 수 있음)
+  var KEY_STORE = 'cisne-admin-key';
+  var app = document.getElementById('app');
+  var state = { teams: {}, live: {}, scores: {} };
+  var notice = '', subs = [];
+  var pinned = '';          // 직접 고른 경기 (비우면 방송 중 경기를 따라감)
+  var rollTimer = 0, clockTimer = 0;
+
+  function key() { try { return sessionStorage.getItem(KEY_STORE) || ''; } catch (e) { return ''; } }
+  function setKey(v) { try { v ? sessionStorage.setItem(KEY_STORE, v) : sessionStorage.removeItem(KEY_STORE); } catch (e) { /* 저장 안 됨 */ } }
+  function show(html) { app.innerHTML = (notice ? '<p class="msg ' + notice.cls + '">' + esc(notice.text) + '</p>' : '') + html; }
+
+  function loginScreen() {
+    show('<div class="card"><h2>관리자 로그인</h2><form class="row" id="login">' +
+      '<input type="password" id="key" class="grow" placeholder="관리자 비밀키" autocomplete="current-password">' +
+      '<button class="primary">로그인</button></form></div>');
+    document.getElementById('login').onsubmit = async function (e) {
+      e.preventDefault();
+      var k = document.getElementById('key').value.trim();
+      try {
+        var r = await fetch(AUTH_URL + '/admin/token', { method: 'POST', body: new URLSearchParams({ key: k }) });
+        if (r.status === 403 && await r.clone().json().then(function (j) { return j.error === 'key'; }, function () { return false; })) {
+          notice = { cls: 'error', text: '비밀키가 맞지 않습니다.' }; return loginScreen();
+        }
+        if (!r.ok) throw new Error((r.status === 403 ? '프록시에서 차단됨 ' : '서버 오류 ') + r.status);
+        setKey(k);
+        notice = '';
+        await signInWithCustomToken(auth, (await r.json()).token);
+      } catch (err) {
+        notice = { cls: 'error', text: '로그인에 실패했습니다: ' + err.message };
+        loginScreen();
+      }
+    };
+  }
+
+  function teamName(tid) {
+    var t = tid && state.teams[tid];
+    if (!t) return '';
+    return t.name || Object.keys(t.members || {}).map(function (k) { return t.members[k]; }).join(' · ');
+  }
+  function fmtLeft(ms) {
+    var s = Math.max(0, Math.ceil(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
+    return (h > 0 ? h + ':' + String(m).padStart(2, '0') : String(m).padStart(2, '0')) + ':' + String(s % 60).padStart(2, '0');
+  }
+  function sumText(mid, v) { return typeof v !== 'number' ? '—' : matchInfo(mid).stage === 'f' ? v + '승' : fmtScore(v); }
+
+  function topHtml(live) {
+    var scene = SCENES.filter(function (s) { return s.id === live.scene; })[0];
+    var cur = matchInfo(live.cur);
+    return '<div class="top"><span class="chip">방송 화면 <b>' + (scene ? scene.name : '—') + '</b></span>' +
+      '<span class="chip' + (cur ? ' live' : '') + '">방송 중 경기 <b>' + (cur ? cur.name : '없음') + '</b></span>' +
+      '<span class="chip">대기 타이머 <b id="clock">—</b></span>' +
+      '<span class="grow"></span><button type="button" data-act="logout">로그아웃</button></div>';
+  }
+
+  // 기준점수를 막 뽑았으면 오버레이 릴이 멈출 때까지 숫자를 감춥니다 (진행자가 먼저 말하지 않도록)
+  function rolling(g) { return g.base && g.at && serverNow() < g.at + REEL_MS; }
+
+  function gameHtml(live, mid, ids, i) {
+    var m = live.matches[mid], g = m.games[i] || {}, final = matchInfo(mid).stage === 'f';
+    var d = ids.map(function (tid) { return gameDiff(live, state.teams, state.scores, mid, i, tid); });
+    var html = '<div class="game' + (m.win && !g.base ? ' skip' : '') + '"><div class="slot">' +
+      (g.song ? '<img class="jacket" alt="" src="' + jacketUrl(g.song) + '">' : '<div class="jacket"></div>') +
+      '<div class="name"><b>' + (i + 1) + '판</b> ' + (g.song ? esc(g.song.n) : '<small>곡 미정</small>') +
+      (g.by ? '<small>' + esc(teamName(g.by)) + ' 선곡</small>' : '') + '</div>' +
+      '<div class="base"><span class="hint">기준 점수</span>' +
+      (rolling(g) ? '<b class="rolling">추첨 중…</b>' : '<b>' + (g.base ? fmtScore(g.base) : '—') + '</b>') + '</div></div>';
+    html += '<div class="sides">';
+    ids.forEach(function (tid, k) {
+      var members = (state.teams[tid] || {}).members || {}, sc = ((state.scores[mid] || {})[i]) || {};
+      var total = teamTotal(state.teams, state.scores, mid, i, tid), win = d[0] != null && d[1] != null && d[k] < d[1 - k];
+      html += '<div class="side"><h3>' + esc(teamName(tid)) + (final && win ? ' <span class="win-badge">판 승리</span>' : '') + '</h3>';
+      Object.keys(members).forEach(function (uid) {
+        html += '<p><span>' + esc(members[uid]) + '</span><span class="num">' + (typeof sc[uid] === 'number' ? fmtScore(sc[uid]) : '—') + '</span></p>';
+      });
+      html += '<p class="sum"><span>합산</span><span class="num">' + (total == null ? '—' : fmtScore(total)) + '</span></p>' +
+        '<p><span>차이</span><span class="num' + (win ? ' lead' : '') + '">' + (d[k] == null || rolling(g) ? '—' : fmtScore(d[k])) + '</span></p></div>';
+    });
+    html += '</div>';
+    if (d[0] != null && d[0] === d[1] && !rolling(g)) html += '<p class="hint">이 판은 동점입니다.</p>';
+    return html + '</div>';
+  }
+
+  function matchHtml(live, mid) {
+    var g = derive(live), info = matchInfo(mid), ids = g.teams[mid], m = live.matches[mid], final = info.stage === 'f';
+    var html = '<div class="card"><p class="hint">' + info.name + (live.cur === mid ? ' · <span class="onair">방송 중</span>' : '') +
+      (pinned ? ' · <a href="#" data-act="follow">방송 중 경기 따라가기</a>' : '') + '</p>';
+    if (!ids[0] || !ids[1]) return html + '<p>' + (mid === 'm4' || mid === 'm5' ? '앞 경기 승자가 정해지지 않았습니다.' : '6강 배치가 아직 정해지지 않았습니다.') + '</p></div>';
+    html += '<div class="vs"><span>' + esc(teamName(ids[0])) + '</span><small>vs</small><span>' + esc(teamName(ids[1])) + '</span></div>';
+
+    var both = ids.every(function (t) { return typeof m.sum[t] === 'number'; }), lead = '';
+    if (both && m.sum[ids[0]] !== m.sum[ids[1]]) lead = ids[(final ? m.sum[ids[0]] > m.sum[ids[1]] : m.sum[ids[0]] < m.sum[ids[1]]) ? 0 : 1];
+    html += '<div class="total">';
+    ids.forEach(function (tid) {
+      html += '<div><span class="hint">' + (final ? '승수' : '획득 점수 합 (작을수록 유리)') + '</span><b class="' + (lead === tid ? 'lead' : '') + '">' + sumText(mid, m.sum[tid]) + '</b>' +
+        (g.win[mid] === tid ? '<span class="win-badge">승자 확정</span>' : lead === tid ? '<span class="hint">앞서는 중</span>' : '') + '</div>';
+    });
+    html += '</div>' + (both && !lead ? '<p class="hint">합계가 동점입니다.</p>' : '');
+    if (final) html += '<p class="hint">결승 후보 ' + m.pool.length + '곡: ' + (m.pool.map(function (s) { return esc(s.n); }).join(', ') || '추첨 전') + '</p>';
+    for (var i = 0; i < gameCount(mid); i++) html += gameHtml(live, mid, ids, i);
+    return html + '</div>';
+  }
+
+  function bracketHtml(live, mid) {
+    var g = derive(live), html = '<div class="card"><h2>대진표</h2><div class="matches">';
+    MATCHES.forEach(function (x) {
+      var t = g.teams[x.id], s = live.matches[x.id].sum;
+      var line = function (tid) {
+        if (!tid) return '?';
+        var v = s[tid];
+        return '<span class="' + (g.win[x.id] === tid ? 'w' : '') + '">' + esc(teamName(tid)) + (typeof v === 'number' ? ' (' + sumText(x.id, v) + ')' : '') + '</span>';
+      };
+      html += '<button type="button" data-act="pin" data-mid="' + x.id + '"' + (mid === x.id ? ' class="on"' : '') + '>' + x.name +
+        (live.cur === x.id ? ' <span class="onair">방송 중</span>' : '') +
+        '<small>' + (t[0] || t[1] ? line(t[0]) + ' vs ' + line(t[1]) : '미정') + '</small></button>';
+    });
+    var champ = g.win.m5;
+    return html + '</div>' + (champ ? '<p class="win-badge" style="margin-top:10px">우승: ' + esc(teamName(champ)) + '</p>' : '') + '</div>';
+  }
+
+  function render() {
+    if (!key()) return;
+    var live = normLive(state.live), mid = pinned || live.cur || 'm1';
+    show(topHtml(live) + '<div class="layout">' + matchHtml(live, mid) + bracketHtml(live, mid) + '</div>');
+    tick();
+    // 추첨 중인 판이 있으면 릴이 끝날 때 다시 그립니다
+    clearTimeout(rollTimer);
+    var ends = live.matches[mid].games.filter(rolling).map(function (g) { return g.at + REEL_MS - serverNow(); });
+    if (ends.length) rollTimer = setTimeout(render, Math.max.apply(null, ends) + 50);
+  }
+
+  // 타이머 글자만 1초마다 바꿉니다
+  function tick() {
+    clearTimeout(clockTimer);
+    var e = document.getElementById('clock'), t = normLive(state.live).timer;
+    if (!e) return;
+    if (!t) { e.textContent = '꺼짐'; return; }
+    var left = t - serverNow();
+    e.textContent = left > 0 ? fmtLeft(left) + ' 남음' : '종료';
+    if (left > 0) clockTimer = setTimeout(tick, left % 1000 || 1000);
+  }
+
+  app.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-act]');
+    if (!b) return;
+    var act = b.dataset.act;
+    if (act === 'logout') { setKey(''); signOut(auth); return; }
+    if (act === 'pin') {
+      e.preventDefault();
+      // 방송 중 경기를 누르면 다시 따라갑니다
+      pinned = b.dataset.mid === normLive(state.live).cur ? '' : b.dataset.mid;
+      return render();
+    }
+    if (act === 'follow') { e.preventDefault(); pinned = ''; render(); }
+  });
+
+  onAuthStateChanged(auth, async function (user) {
+    subs.forEach(function (off) { off(); });
+    subs = [];
+    if (!user || !key()) return loginScreen();
+    var claims = (await user.getIdTokenResult()).claims;
+    if (claims.admin !== ROOM) return loginScreen();
+    ['teams', 'live', 'scores'].forEach(function (k) {
+      subs.push(onValue(roomRef(k), function (s) { state[k] = s.val() || {}; render(); },
+        function (err) { notice = { cls: 'error', text: '불러오지 못했습니다: ' + err.message }; render(); }));
+    });
+  });
+</script>
+</body>
+</html>

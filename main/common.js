@@ -119,6 +119,21 @@ export function derive(live) {
   return { r1: r1, r2: r2, r3: r3, r4: r4, win: win, teams: teams };
 }
 
+export function matchInfo(mid) { return MATCHES.filter(function (m) { return m.id === mid; })[0]; }
+export function gameCount(mid) { return matchInfo(mid).stage === 'f' ? 3 : 2; }
+
+// 판의 팀 합산 점수 (두 선수 점수가 모두 있어야 계산)
+export function teamTotal(teams, scores, mid, i, tid) {
+  var sc = ((scores[mid] || {})[i]) || {}, ms = Object.keys((teams[tid] || {}).members || {});
+  if (ms.length !== 2 || ms.some(function (u) { return typeof sc[u] !== 'number'; })) return null;
+  return sc[ms[0]] + sc[ms[1]];
+}
+// 판의 획득 점수 |기준 − 합산|
+export function gameDiff(live, teams, scores, mid, i, tid) {
+  var g = live.matches[mid].games[i] || {}, t = teamTotal(teams, scores, mid, i, tid);
+  return g.base && t != null ? Math.abs(g.base - t) : null;
+}
+
 export function fmtScore(n) { return n == null ? '' : n.toLocaleString('en-US'); }
 
 // 서버 시각 (추첨 시각·타이머를 PC 시계 차이 없이 맞춥니다)
