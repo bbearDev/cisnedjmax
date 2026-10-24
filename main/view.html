@@ -85,7 +85,10 @@
         if (!r.ok) throw new Error((r.status === 403 ? '프록시에서 차단됨 ' : '서버 오류 ') + r.status);
         setKey(k);
         notice = '';
+        // 이미 같은 관리자 계정(uid 'admin')으로 로그인돼 있으면 Firebase가 상태 변경을 알리지 않으므로 직접 시작합니다
+        var before = auth.currentUser && auth.currentUser.uid;
         await signInWithCustomToken(auth, (await r.json()).token);
+        if (before && before === auth.currentUser.uid) start(auth.currentUser);
       } catch (err) {
         notice = { cls: 'error', text: '로그인에 실패했습니다: ' + err.message };
         loginScreen();
@@ -214,7 +217,7 @@
     if (act === 'follow') { e.preventDefault(); pinned = ''; render(); }
   });
 
-  onAuthStateChanged(auth, async function (user) {
+  async function start(user) {
     subs.forEach(function (off) { off(); });
     subs = [];
     if (!user || !key()) return loginScreen();
@@ -224,7 +227,8 @@
       subs.push(onValue(roomRef(k), function (s) { state[k] = s.val() || {}; render(); },
         function (err) { notice = { cls: 'error', text: '불러오지 못했습니다: ' + err.message }; render(); }));
     });
-  });
+  }
+  onAuthStateChanged(auth, start);
 </script>
 </body>
 </html>
