@@ -27,8 +27,7 @@
   .fx-name { width: 80px; font-weight: 700; }
   .game { border-top: 1px solid var(--line); padding: 12px 0; }
   .game.locked { opacity: .5; }
-  .diff { display: flex; gap: 4px; margin-top: 4px; }
-  .diff select { padding: 3px 6px; font-size: 13px; }
+  .side label select { padding: 5px 4px; font-size: 13px; }
   .game .base { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .sides { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
   .side h3 { font-size: 14px; margin: 0 0 4px; }
@@ -225,8 +224,8 @@
       var song = (state.picks[tid] || {})[stage] || null, old = (games[i] || {}).song, p = 'live/matches/' + mid + '/games/' + i + '/';
       patch[p + 'song'] = song;
       patch[p + 'by'] = tid;
-      // 곡이 바뀌면 그 곡에 넣었던 난이도도 지웁니다
-      if (!song || !old || song.s !== old.s) { patch[p + 'btn'] = null; patch[p + 'pat'] = null; }
+      // 곡이 바뀌면 그 곡에 넣었던 선수별 난이도도 지웁니다
+      if (!song || !old || song.s !== old.s) patch[p + 'd'] = null;
     });
     return patch;
   }
@@ -290,10 +289,13 @@
     return '<option value="">' + blank + '</option>' + list.map(function (v) { return '<option' + (v === cur ? ' selected' : '') + '>' + v + '</option>'; }).join('');
   }
 
-  function scoreInput(mid, i, uid, nick, locked) {
+  function scoreInput(mid, i, uid, nick, locked, g) {
     var k = 's/' + mid + '/' + i + '/' + uid, v = ((state.scores[mid] || {})[i] || {})[uid];
     var shown = k in typing ? typing[k] : (typeof v === 'number' ? fmtScore(v) : '');
-    return '<label><span>' + esc(nick) + '</span><input type="text" inputmode="numeric" data-k="' + k + '" value="' + esc(shown) + '"' + (locked ? ' disabled' : '') + '></label>';
+    var d = (g.d || {})[uid] || {}, dk = i + '/d/' + uid + '/';
+    return '<label><span>' + esc(nick) + '</span>' +
+      (g.song ? '<select data-diff="' + dk + 'btn">' + diffOptions(BUTTONS, d.btn, '버튼') + '</select>' +
+        '<select data-diff="' + dk + 'pat">' + diffOptions(PATTERNS, d.pat, '패턴') + '</select>' : '') + '<input type="text" inputmode="numeric" data-k="' + k + '" value="' + esc(shown) + '"' + (locked ? ' disabled' : '') + '></label>';
   }
 
   function gameRow(live, mid, ids, i) {
@@ -302,9 +304,7 @@
     var html = '<div class="game' + (locked ? ' locked' : '') + '"><div class="slot">' +
       (g.song ? '<img class="jacket" alt="" src="' + jacketUrl(g.song) + '">' : '<div class="jacket"></div>') +
       '<div class="name"><b>' + (i + 1) + '판</b> ' + (g.song ? esc(g.song.n) : '<small>곡 없음</small>') +
-      (g.by ? '<small>' + esc(teamName(g.by)) + ' 선곡</small>' : '') +
-      (g.song ? '<div class="diff"><select data-diff="' + i + '/btn">' + diffOptions(BUTTONS, g.btn, '버튼') + '</select>' +
-        '<select data-diff="' + i + '/pat">' + diffOptions(PATTERNS, g.pat, '패턴') + '</select></div>' : '') + '</div>' +
+      (g.by ? '<small>' + esc(teamName(g.by)) + ' 선곡</small>' : '') + '</div>' +
       '<div><div class="hint">기준 점수</div><div class="base">' + (g.base ? fmtScore(g.base) : '—') + '</div></div>' +
       '<button type="button" data-act="roll" data-i="' + i + '"' + (!g.song || locked ? ' disabled' : '') + '>' + (g.base ? '다시 추첨' : '기준점수 추첨') + '</button>' +
       (g.base ? '<button type="button" data-act="unroll" data-i="' + i + '">초기화</button>' : '') + '</div>';
@@ -314,7 +314,7 @@
       var members = (state.teams[tid] || {}).members || {}, total = teamTotal(state.teams, state.scores, mid, i, tid);
       var win = d[0] != null && d[1] != null && d[k] < d[1 - k];
       html += '<div class="side"><h3>' + esc(teamName(tid)) + '</h3>';
-      Object.keys(members).forEach(function (uid) { html += scoreInput(mid, i, uid, members[uid], locked); });
+      Object.keys(members).forEach(function (uid) { html += scoreInput(mid, i, uid, members[uid], locked, g); });
       html += '<div class="hint num">합산 ' + (total == null ? '—' : fmtScore(total)) + ' · 차이 <span class="' + (win ? 'lead' : '') + '">' +
         (d[k] == null ? '—' : fmtScore(d[k])) + '</span>' + (final && win ? ' · <span class="lead">판 승리</span>' : '') + '</div></div>';
     });

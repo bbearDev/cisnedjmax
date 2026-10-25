@@ -16,8 +16,8 @@
 //     matches: { m1~m5: {
 //       win:    팀ID                           관리자가 확정한 승자
 //       sum:    { 팀ID: 숫자 }                  대진표 점수 (6강·4강: 획득 점수 합, 결승: 승수)
-//       games:  [{ song: 곡, by: 팀ID, base: 기준점수, at: 추첨 시각, btn: '4B'~'8B', pat: 'NM'|'HD'|'MX'|'SC' }]   판 순서대로
-//               btn·pat = 관리자가 넣는 난이도 (버튼·패턴, 비어 있을 수 있음)
+//       games:  [{ song: 곡, by: 팀ID, base: 기준점수, at: 추첨 시각, d: { <디스코드ID>: 난이도 } }]   판 순서대로
+//               난이도 = { btn: '4B'~'8B', pat: 'NM'|'HD'|'MX'|'SC' }  관리자가 선수마다 넣음 (비어 있을 수 있음)
 //       pool:   [곡 × 최대 6], drawAt: 시각    결승만: 3곡 추첨 후보와 추첨 시각
 //     } }
 //   scores: { m1~m5: { <판 번호>: { <디스코드ID>: 점수 } } }   관리자만 읽기
@@ -73,10 +73,10 @@ export var FX_TYPES = [
 export var FX_DIRS = [{ id: 'left', name: '← 왼쪽' }, { id: 'right', name: '→ 오른쪽' }, { id: 'up', name: '↑ 위' }, { id: 'down', name: '↓ 아래' }];
 export var FX_COLORS = [{ id: '#000000', name: '검정' }, { id: '#ffffff', name: '흰색' }, { id: '#4a1458', name: '보라' }];
 export var FX_MS = [300, 500, 800, 1000, 1500];
-// 난이도 (관리자 경기 진행 탭에서 판마다 입력)
+// 난이도 (관리자 경기 진행 탭에서 판·선수마다 입력)
 export var BUTTONS = ['4B', '5B', '6B', '8B'];
 export var PATTERNS = ['NM', 'HD', 'MX', 'SC'];
-export function diffText(g) { return [g.btn, g.pat].filter(Boolean).join(' '); }
+export function diffText(d) { return d ? [d.btn, d.pat].filter(Boolean).join(' ') : ''; }
 export var BASE_MIN = 1400000, BASE_MAX = 2000000, BASE_STEP = 10000;
 // 추첨을 누른 뒤 이 시간 안에 화면을 연 오버레이만 릴을 돌립니다
 export var REEL_MS = 3000;
