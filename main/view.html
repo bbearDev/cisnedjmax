@@ -25,6 +25,7 @@
   .game { border-top: 1px solid var(--line); padding: 12px 0; }
   .game.skip { opacity: .45; }
   .game .slot { border: 0; padding: 0; }
+  .diff { margin-left: 6px; padding: 1px 6px; border-radius: 4px; background: var(--line); font-size: 13px; font-weight: 700; white-space: nowrap; }
   .base { text-align: right; }
   .base b { display: block; font-size: 24px; font-variant-numeric: tabular-nums; }
   .base .rolling { color: var(--muted); font-size: 16px; }
@@ -54,7 +55,7 @@
 </main>
 
 <script type="module">
-  import { auth, ROOM, AUTH_URL, MATCHES, SCENES, REEL_MS, roomRef, esc, jacketUrl, fmtScore, normLive, derive, serverNow, matchInfo, gameCount, teamTotal, gameDiff } from './common.js';
+  import { auth, ROOM, AUTH_URL, MATCHES, SCENES, REEL_MS, roomRef, esc, jacketUrl, fmtScore, normLive, derive, serverNow, matchInfo, gameCount, teamTotal, gameDiff, diffText } from './common.js';
   import { signInWithCustomToken, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
   import { onValue } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
 
@@ -125,6 +126,7 @@
     var html = '<div class="game' + (m.win && !g.base ? ' skip' : '') + '"><div class="slot">' +
       (g.song ? '<img class="jacket" alt="" src="' + jacketUrl(g.song) + '">' : '<div class="jacket"></div>') +
       '<div class="name"><b>' + (i + 1) + '판</b> ' + (g.song ? esc(g.song.n) : '<small>곡 미정</small>') +
+      (diffText(g) ? '<span class="diff">' + diffText(g) + '</span>' : '') +
       (g.by ? '<small>' + esc(teamName(g.by)) + ' 선곡</small>' : '') + '</div>' +
       '<div class="base"><span class="hint">기준 점수</span>' +
       (rolling(g) ? '<b class="rolling">추첨 중…</b>' : '<b>' + (g.base ? fmtScore(g.base) : '—') + '</b>') + '</div></div>';

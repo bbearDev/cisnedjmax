@@ -27,6 +27,8 @@
   .fx-name { width: 80px; font-weight: 700; }
   .game { border-top: 1px solid var(--line); padding: 12px 0; }
   .game.locked { opacity: .5; }
+  .diff { display: flex; gap: 4px; margin-top: 4px; }
+  .diff select { padding: 3px 6px; font-size: 13px; }
   .game .base { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .sides { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
   .side h3 { font-size: 14px; margin: 0 0 4px; }
@@ -45,7 +47,7 @@
 </main>
 
 <script type="module">
-  import { auth, ROOM, AUTH_URL, STAGES, MATCHES, SCENES, FX_TYPES, FX_DIRS, FX_COLORS, FX_MS, BASE_MIN, BASE_MAX, BASE_STEP, roomRef, esc, jacketUrl, fmtTime, fmtScore, slots, pickSong, normLive, derive, serverNow, matchInfo, gameCount, teamTotal, gameDiff } from './common.js';
+  import { auth, ROOM, AUTH_URL, STAGES, MATCHES, SCENES, FX_TYPES, FX_DIRS, FX_COLORS, FX_MS, BUTTONS, PATTERNS, BASE_MIN, BASE_MAX, BASE_STEP, roomRef, esc, jacketUrl, fmtTime, fmtScore, slots, pickSong, normLive, derive, serverNow, matchInfo, gameCount, teamTotal, gameDiff } from './common.js';
   import { signInWithCustomToken, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
   import { onValue, set, remove, update, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
 
@@ -218,10 +220,13 @@
 
   // 6강·4강: 두 팀 자선곡을 판 순서대로 (왼쪽 팀 먼저)
   function loadPicks(mid, ids, patch) {
-    var stage = matchInfo(mid).stage;
+    var stage = matchInfo(mid).stage, games = normLive(state.live).matches[mid].games;
     ids.forEach(function (tid, i) {
-      patch['live/matches/' + mid + '/games/' + i + '/song'] = (state.picks[tid] || {})[stage] || null;
-      patch['live/matches/' + mid + '/games/' + i + '/by'] = tid;
+      var song = (state.picks[tid] || {})[stage] || null, old = (games[i] || {}).song, p = 'live/matches/' + mid + '/games/' + i + '/';
+      patch[p + 'song'] = song;
+      patch[p + 'by'] = tid;
+      // 곡이 바뀌면 그 곡에 넣었던 난이도도 지웁니다
+      if (!song || !old || song.s !== old.s) { patch[p + 'btn'] = null; patch[p + 'pat'] = null; }
     });
     return patch;
   }
@@ -281,6 +286,10 @@
     return html + '</div></div>';
   }
 
+  function diffOptions(list, cur, blank) {
+    return '<option value="">' + blank + '</option>' + list.map(function (v) { return '<option' + (v === cur ? ' selected' : '') + '>' + v + '</option>'; }).join('');
+  }
+
   function scoreInput(mid, i, uid, nick, locked) {
     var k = 's/' + mid + '/' + i + '/' + uid, v = ((state.scores[mid] || {})[i] || {})[uid];
     var shown = k in typing ? typing[k] : (typeof v === 'number' ? fmtScore(v) : '');
@@ -293,7 +302,9 @@
     var html = '<div class="game' + (locked ? ' locked' : '') + '"><div class="slot">' +
       (g.song ? '<img class="jacket" alt="" src="' + jacketUrl(g.song) + '">' : '<div class="jacket"></div>') +
       '<div class="name"><b>' + (i + 1) + '판</b> ' + (g.song ? esc(g.song.n) : '<small>곡 없음</small>') +
-      (g.by ? '<small>' + esc(teamName(g.by)) + ' 선곡</small>' : '') + '</div>' +
+      (g.by ? '<small>' + esc(teamName(g.by)) + ' 선곡</small>' : '') +
+      (g.song ? '<div class="diff"><select data-diff="' + i + '/btn">' + diffOptions(BUTTONS, g.btn, '버튼') + '</select>' +
+        '<select data-diff="' + i + '/pat">' + diffOptions(PATTERNS, g.pat, '패턴') + '</select></div>' : '') + '</div>' +
       '<div><div class="hint">기준 점수</div><div class="base">' + (g.base ? fmtScore(g.base) : '—') + '</div></div>' +
       '<button type="button" data-act="roll" data-i="' + i + '"' + (!g.song || locked ? ' disabled' : '') + '>' + (g.base ? '다시 추첨' : '기준점수 추첨') + '</button>' +
       (g.base ? '<button type="button" data-act="unroll" data-i="' + i + '">초기화</button>' : '') + '</div>';
@@ -452,6 +463,8 @@
       if (e.target.dataset.r1 != null) await set(roomRef('live/r1/' + e.target.dataset.r1), e.target.value || null);
       var f = e.target.dataset.fx;
       if (f) await set(roomRef('live/fx/' + f), /\/ms$/.test(f) ? Number(e.target.value) : e.target.value);
+      var df = e.target.dataset.diff;
+      if (df) await set(roomRef('live/matches/' + edit + '/games/' + df), e.target.value || null);
     } catch (err) {
       say('error', /permission/i.test(err.code + err.message) ? '권한이 없습니다. 다시 로그인하세요.' : err.message);
     }
