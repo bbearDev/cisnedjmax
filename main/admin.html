@@ -341,7 +341,7 @@
       '<button type="button" class="primary" data-act="onair">트랙리스트에 띄우기</button>';
     if (final) html += '<button type="button" data-act="draw">' + (m.pool.length ? '3곡 다시 추첨' : '결승 3곡 추첨') + '</button>';
     else html += '<button type="button" data-act="load">자선곡 다시 불러오기</button><button type="button" data-act="swap">판 순서 바꾸기</button>';
-    html += '</div>';
+    html += '<button type="button" data-act="reset"' + (m.pool.length || m.games.some(function (x) { return x.song; }) ? '' : ' disabled') + '>곡 초기화</button></div>';
     if (final) html += '<p class="hint">후보 ' + m.pool.length + '곡: ' + (m.pool.map(function (s) { return esc(s.n); }).join(', ') || '추첨 전') + '</p>';
 
     for (var i = 0; i < gameCount(edit); i++) html += gameRow(live, edit, ids, i);
@@ -426,6 +426,16 @@
       u['scores/' + edit] = null;
       u['live/cur'] = edit;
       u['live/scene'] = 'track';
+      return saveMatch(edit, u);
+    }
+    // 곡을 넣기 전 상태로 되돌립니다 (결승은 추첨 전으로)
+    if (act === 'reset') {
+      if (!confirm(matchInfo(edit).name + ' 곡을 초기화할까요? 판별 곡·기준점수·난이도·입력한 점수와 승자가 지워집니다.')) return;
+      u[base + 'games'] = null;
+      u[base + 'pool'] = null;
+      u[base + 'drawAt'] = null;
+      u[base + 'win'] = null;
+      u['scores/' + edit] = null;
       return saveMatch(edit, u);
     }
     if (act === 'roll') {
