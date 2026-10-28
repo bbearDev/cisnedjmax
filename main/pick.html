@@ -14,7 +14,7 @@
 </main>
 
 <script type="module">
-  import { auth, db, ROOM, AUTH_URL, STAGES, roomRef, esc, jacketUrl, fmtTime, slots, pickSong } from './common.js';
+  import { auth, db, ROOM, AUTH_URL, STAGES, roomRef, esc, jacketUrl, fmtTime, slots, pickSong, memberIds } from './common.js';
   import { signInWithCustomToken, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
   import { ref, onValue, set, remove } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
 
@@ -52,7 +52,7 @@
       return;
     }
     var editable = open();
-    var members = Object.keys(t.members).map(function (id) {
+    var members = memberIds(t).map(function (id) {
       return esc(t.members[id] || id) + (id === view.uid ? ' <small class="hint">(나)</small>' : '');
     }).join(', ');
     var html = '<div class="card"><h2>팀 정보</h2>' +

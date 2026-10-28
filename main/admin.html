@@ -46,7 +46,7 @@
 </main>
 
 <script type="module">
-  import { auth, ROOM, AUTH_URL, STAGES, MATCHES, SCENES, FX_TYPES, FX_DIRS, FX_COLORS, FX_MS, BUTTONS, PATTERNS, BASE_MIN, BASE_MAX, BASE_STEP, roomRef, esc, jacketUrl, fmtTime, fmtScore, slots, pickSong, normLive, derive, serverNow, matchInfo, gameCount, teamTotal, gameDiff } from './common.js';
+  import { auth, ROOM, AUTH_URL, STAGES, MATCHES, SCENES, FX_TYPES, FX_DIRS, FX_COLORS, FX_MS, BUTTONS, PATTERNS, BASE_MIN, BASE_MAX, BASE_STEP, roomRef, esc, jacketUrl, fmtTime, fmtScore, slots, pickSong, normLive, derive, serverNow, matchInfo, gameCount, teamTotal, gameDiff, memberIds } from './common.js';
   import { signInWithCustomToken, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
   import { onValue, set, remove, update, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
 
@@ -107,8 +107,7 @@
 
   // 저장된 팀은 입력을 시작할 때 드래프트로 복사합니다 (그 전에는 DB 값을 그대로 보여 줍니다)
   function fromState(tid) {
-    var t = state.teams[tid] || {}, m = t.members || {}, ids = Object.keys(m);
-    if (t.lead in m) ids.sort(function (a, b) { return (b === t.lead) - (a === t.lead); });
+    var t = state.teams[tid] || {}, m = t.members || {}, ids = memberIds(t);
     return { name: t.name || '', ids: [ids[0] || '', ids[1] || ''], nicks: Object.assign({}, m) };
   }
   function draftOf(tid) { return drafts[tid] || (drafts[tid] = fromState(tid)); }
@@ -180,7 +179,7 @@
   function teamName(tid) {
     var t = tid && state.teams[tid];
     if (!t) return '';
-    return t.name || Object.keys(t.members || {}).map(function (k) { return t.members[k]; }).join(' · ');
+    return t.name || memberIds(t).map(function (k) { return t.members[k]; }).join(' · ');
   }
   // 대진표 점수: 6강·4강은 획득 점수 합(작을수록 유리), 결승은 판마다 차이가 작은 팀의 승수
   function matchSum(live, scores, mid) {
@@ -346,7 +345,7 @@
       var members = (state.teams[tid] || {}).members || {}, total = teamTotal(state.teams, state.scores, mid, i, tid);
       var win = d[0] != null && d[1] != null && d[k] < d[1 - k];
       html += '<div class="side"><h3>' + esc(teamName(tid)) + '</h3>';
-      Object.keys(members).forEach(function (uid) { html += scoreInput(mid, i, uid, members[uid], locked, g); });
+      memberIds(state.teams[tid]).forEach(function (uid) { html += scoreInput(mid, i, uid, members[uid], locked, g); });
       html += '<div class="hint num">합산 ' + (total == null ? '—' : fmtScore(total)) + ' · 차이 <span class="' + (win ? 'lead' : '') + '">' +
         (d[k] == null ? '—' : fmtScore(d[k])) + '</span>' + (final && win ? ' · <span class="lead">판 승리</span>' : '') + '</div></div>';
     });

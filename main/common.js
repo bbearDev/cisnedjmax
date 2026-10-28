@@ -128,6 +128,12 @@ export function derive(live) {
 export function matchInfo(mid) { return MATCHES.filter(function (m) { return m.id === mid; })[0]; }
 export function gameCount(mid) { return matchInfo(mid).stage === 'f' ? 3 : 2; }
 
+// 팀 선수 ID (팀장 먼저). Firebase는 키를 글자 순서로 돌려줘서 그대로 쓰면 순서가 섞입니다
+export function memberIds(t) {
+  var ids = Object.keys((t || {}).members || {});
+  return t && ids.indexOf(t.lead) >= 0 ? ids.sort(function (a, b) { return (b === t.lead) - (a === t.lead); }) : ids;
+}
+
 // 판의 팀 합산 점수 (두 선수 점수가 모두 있어야 계산)
 export function teamTotal(teams, scores, mid, i, tid) {
   var sc = ((scores[mid] || {})[i]) || {}, ms = Object.keys((teams[tid] || {}).members || {});

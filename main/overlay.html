@@ -86,7 +86,7 @@
 </div>
 
 <script type="module">
-  import { roomRef, MATCHES, BASE_MIN, BASE_MAX, BASE_STEP, REEL_MS, normLive, derive, fmtScore, jacketUrl, serverNow } from './common.js';
+  import { roomRef, MATCHES, BASE_MIN, BASE_MAX, BASE_STEP, REEL_MS, normLive, derive, fmtScore, jacketUrl, serverNow, memberIds } from './common.js';
   import { onValue } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
 
   // ?scene=bracket 처럼 화면을 고정하면 관리 페이지의 전환을 따르지 않습니다 (OBS 장면마다 따로 넣을 때)
@@ -119,7 +119,7 @@
   function teamName(tid) {
     var t = tid && teams[tid];
     if (!t) return '';
-    return t.name || Object.keys(t.members || {}).map(function (k) { return t.members[k]; }).join(' · ');
+    return t.name || memberIds(t).map(function (k) { return t.members[k]; }).join(' · ');
   }
   // 긴 이름은 칸을 넘지 않도록 글자 크기를 줄입니다
   function shrinkToFit(e) {

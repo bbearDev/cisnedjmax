@@ -55,7 +55,7 @@
 </main>
 
 <script type="module">
-  import { auth, ROOM, AUTH_URL, MATCHES, SCENES, REEL_MS, roomRef, esc, jacketUrl, fmtScore, normLive, derive, serverNow, matchInfo, gameCount, teamTotal, gameDiff, diffText } from './common.js';
+  import { auth, ROOM, AUTH_URL, MATCHES, SCENES, REEL_MS, roomRef, esc, jacketUrl, fmtScore, normLive, derive, serverNow, matchInfo, gameCount, teamTotal, gameDiff, diffText, memberIds } from './common.js';
   import { signInWithCustomToken, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
   import { onValue } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
 
@@ -100,7 +100,7 @@
   function teamName(tid) {
     var t = tid && state.teams[tid];
     if (!t) return '';
-    return t.name || Object.keys(t.members || {}).map(function (k) { return t.members[k]; }).join(' · ');
+    return t.name || memberIds(t).map(function (k) { return t.members[k]; }).join(' · ');
   }
   function fmtLeft(ms) {
     var s = Math.max(0, Math.ceil(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
@@ -134,7 +134,7 @@
       var members = (state.teams[tid] || {}).members || {}, sc = ((state.scores[mid] || {})[i]) || {};
       var total = teamTotal(state.teams, state.scores, mid, i, tid), win = d[0] != null && d[1] != null && d[k] < d[1 - k];
       html += '<div class="side"><h3>' + esc(teamName(tid)) + (final && win ? ' <span class="win-badge">판 승리</span>' : '') + '</h3>';
-      Object.keys(members).forEach(function (uid) {
+      memberIds(state.teams[tid]).forEach(function (uid) {
         var df = diffText((g.d || {})[uid]);
         html += '<p><span>' + esc(members[uid]) + '</span><span class="num">' + (df ? '<span class="diff">' + df + '</span>' : '') + (typeof sc[uid] === 'number' ? fmtScore(sc[uid]) : '—') + '</span></p>';
       });
