@@ -2,8 +2,9 @@
 // 데이터는 tourney/<방> 아래에 있습니다 (database.rules.json 참고)
 //
 //   config: { deadline: 자선곡 마감 (ms) }
-//   teams:  { <팀ID>: { name: 팀명, n: 순서, members: { <디스코드ID>: 길드 닉네임 } } }
+//   teams:  { <팀ID>: { name: 팀명, n: 순서, members: { <디스코드ID>: 길드 닉네임 }, lead: 팀장 디스코드ID } }
 //   picks:  { <팀ID>: { r1: 곡, r2: 곡, f: { 0|1|2: 곡 } } }    r1=6강 r2=4강 f=결승 후보 3곡
+//           곡에는 미리 정한 난이도 lead/mate: { btn, pat }가 붙을 수 있습니다 (팀장·팀원)
 //   곡 = { s: 곡 번호(V-ARCHIVE title), n: 곡 이름 }
 //
 //   live:   방송 화면이 읽는 공개 데이터 (쓰기는 관리자만)

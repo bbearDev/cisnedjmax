@@ -108,6 +108,7 @@
   // 저장된 팀은 입력을 시작할 때 드래프트로 복사합니다 (그 전에는 DB 값을 그대로 보여 줍니다)
   function fromState(tid) {
     var t = state.teams[tid] || {}, m = t.members || {}, ids = Object.keys(m);
+    if (t.lead in m) ids.sort(function (a, b) { return (b === t.lead) - (a === t.lead); });
     return { name: t.name || '', ids: [ids[0] || '', ids[1] || ''], nicks: Object.assign({}, m) };
   }
   function draftOf(tid) { return drafts[tid] || (drafts[tid] = fromState(tid)); }
@@ -124,20 +125,27 @@
       '<div class="row"><input type="text" class="grow" data-f="name" maxlength="20" placeholder="팀명 (선수가 정함, 관리자 수정 가능)" value="' + esc(d.name) + '"></div>' +
       '<div class="members">';
     [0, 1].forEach(function (k) {
-      html += '<label>선수 ' + (k + 1) + ' 디스코드 ID<input type="text" inputmode="numeric" data-f="id' + k + '" placeholder="예: 832653005580926986" value="' + esc(d.ids[k]) + '">' +
+      html += '<label>선수 ' + (k + 1) + (k ? ' (팀원)' : ' (팀장)') + ' 디스코드 ID<input type="text" inputmode="numeric" data-f="id' + k + '" placeholder="예: 832653005580926986" value="' + esc(d.ids[k]) + '">' +
         '<span class="nick">' + nickHtml(d, d.ids[k]) + '</span></label>';
     });
     html += '</div><div class="row"><button type="button" data-act="nicks">닉네임 불러오기</button>' +
       '<button type="button" class="primary" data-act="save">저장</button>' +
       '<button type="button" class="danger" data-act="delete">삭제</button></div>';
+    if (saved && !(state.teams[tid].lead in (state.teams[tid].members || {}))) html += '<p class="hint">팀장이 지정되지 않았습니다. 선수 1을 팀장으로 하려면 저장을 다시 누르세요.</p>';
     if (saved) {
       var p = state.picks[tid];
       html += '<div class="picks">';
       STAGES.forEach(function (stage) {
         html += '<h3>' + stage.name + '</h3>';
         slots(p, stage).forEach(function (c, j) {
+          var pk = tid + '/' + stage.key + (stage.count > 1 ? '/' + j : '') + '/';
+          var sel = function (r, label) {
+            var v = (c && c[r]) || {};
+            return '<div class="row"><small>' + label + '</small><select data-pdiff="' + pk + r + '/btn">' + diffOptions(BUTTONS, v.btn, '버튼') + '</select>' +
+              '<select data-pdiff="' + pk + r + '/pat">' + diffOptions(PATTERNS, v.pat, '패턴') + '</select></div>';
+          };
           html += '<div class="slot">' + (c ? '<img class="jacket" alt="" src="' + jacketUrl(c) + '">' : '<div class="jacket"></div>') +
-            '<div class="name">' + (c ? esc(c.n) : '<small>미정</small>') + '</div>' +
+            '<div class="name">' + (c ? esc(c.n) + sel('lead', '팀장') + sel('mate', '팀원') : '<small>미정</small>') + '</div>' +
             '<button type="button" data-act="pick" data-stage="' + stage.key + '" data-i="' + j + '">' + (c ? '변경' : '곡 선택') + '</button>' +
             (c ? '<button type="button" class="danger" data-act="clear" data-stage="' + stage.key + '" data-i="' + j + '">비우기</button>' : '') + '</div>';
         });
@@ -217,15 +225,36 @@
   function randInt(n) { var a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; }
   function randomBase() { return BASE_MIN + randInt((BASE_MAX - BASE_MIN) / BASE_STEP + 1) * BASE_STEP; }
 
+  // 자선곡에 정해 둔 난이도는 곡을 넣을 때 두 팀 선수 모두에게 똑같이 적용합니다
+  // (팀장은 팀장 난이도, 팀원은 팀원 난이도를 따릅니다)
+  function songOf(c) { return c ? { s: c.s, n: c.n } : null; }
+  function presetDiff(c, ids) {
+    if (!c || !(c.lead || c.mate)) return null;
+    var d = {};
+    ids.forEach(function (tid) {
+      var t = state.teams[tid] || {};
+      Object.keys(t.members || {}).forEach(function (uid) {
+        var v = c[uid === t.lead ? 'lead' : 'mate'];
+        if (!v || !(v.btn || v.pat)) return;
+        d[uid] = {};
+        if (v.btn) d[uid].btn = v.btn;
+        if (v.pat) d[uid].pat = v.pat;
+      });
+    });
+    return d;
+  }
+
   // 6강·4강: 두 팀 자선곡을 판 순서대로 (왼쪽 팀 먼저)
   function loadPicks(mid, ids, patch) {
     var stage = matchInfo(mid).stage, games = normLive(state.live).matches[mid].games;
     ids.forEach(function (tid, i) {
-      var song = (state.picks[tid] || {})[stage] || null, old = (games[i] || {}).song, p = 'live/matches/' + mid + '/games/' + i + '/';
+      var c = (state.picks[tid] || {})[stage] || null, song = songOf(c), old = (games[i] || {}).song, p = 'live/matches/' + mid + '/games/' + i + '/';
+      var d = presetDiff(c, ids);
       patch[p + 'song'] = song;
       patch[p + 'by'] = tid;
       // 곡이 바뀌면 그 곡에 넣었던 선수별 난이도도 지웁니다
-      if (!song || !old || song.s !== old.s) patch[p + 'd'] = null;
+      if (d) patch[p + 'd'] = d;
+      else if (!song || !old || song.s !== old.s) patch[p + 'd'] = null;
     });
     return patch;
   }
@@ -293,7 +322,8 @@
     var k = 's/' + mid + '/' + i + '/' + uid, v = ((state.scores[mid] || {})[i] || {})[uid];
     var shown = k in typing ? typing[k] : (typeof v === 'number' ? fmtScore(v) : '');
     var d = (g.d || {})[uid] || {}, dk = i + '/d/' + uid + '/';
-    return '<label><span>' + esc(nick) + '</span>' +
+    var lead = Object.keys(state.teams).some(function (t) { return state.teams[t].lead === uid; });
+    return '<label><span>' + esc(nick) + (lead ? ' <small>팀장</small>' : '') + '</span>' +
       (g.song ? '<select data-diff="' + dk + 'btn">' + diffOptions(BUTTONS, d.btn, '버튼') + '</select>' +
         '<select data-diff="' + dk + 'pat">' + diffOptions(PATTERNS, d.pat, '패턴') + '</select>' : '') + '<input type="text" inputmode="numeric" data-k="' + k + '" value="' + esc(shown) + '"' + (locked ? ' disabled' : '') + '></label>';
   }
@@ -342,6 +372,10 @@
     if (final) html += '<button type="button" data-act="draw">' + (m.pool.length ? '3곡 다시 추첨' : '결승 3곡 추첨') + '</button>';
     else html += '<button type="button" data-act="load">자선곡 다시 불러오기</button><button type="button" data-act="swap">판 순서 바꾸기</button>';
     html += '<button type="button" data-act="reset"' + (m.pool.length || m.games.some(function (x) { return x.song; }) ? '' : ' disabled') + '>곡 초기화</button></div>';
+    // 곡을 넣은 뒤 대진이 바뀌면 판에 이전 팀의 곡과 난이도가 남습니다
+    if (m.games.some(function (x) { return x.song && x.by && ids.indexOf(x.by) < 0; })) {
+      html += '<p class="msg error">곡을 넣은 뒤 대진이 바뀌었습니다. 지금 두 팀의 자선곡과 난이도로 바꾸려면 ' + (final ? '3곡 다시 추첨' : '자선곡 다시 불러오기') + '을 누르세요.</p>';
+    }
     if (final) html += '<p class="hint">후보 ' + m.pool.length + '곡: ' + (m.pool.map(function (s) { return esc(s.n); }).join(', ') || '추첨 전') + '</p>';
 
     for (var i = 0; i < gameCount(edit); i++) html += gameRow(live, edit, ids, i);
@@ -414,11 +448,14 @@
       // 두 팀 결승 후보를 모으고 같은 곡은 한 번만 넣습니다
       var pool = [], by = {};
       ids.forEach(function (tid) {
-        slots(state.picks[tid], STAGES[2]).forEach(function (c) { if (c && !(c.s in by)) { by[c.s] = tid; pool.push(c); } });
+        slots(state.picks[tid], STAGES[2]).forEach(function (c) { if (c && !(c.s in by)) { by[c.s] = { tid: tid, c: c }; pool.push(songOf(c)); } });
       });
       if (pool.length < 3) return say('error', '결승 후보곡이 3곡보다 적습니다 (' + pool.length + '곡). 팀·자선곡 탭에서 확인하세요.');
       var left = pool.slice(), games = [];
-      for (var i = 0; i < 3; i++) { var c = left.splice(randInt(left.length), 1)[0]; games.push({ song: c, by: by[c.s] }); }
+      for (var i = 0; i < 3; i++) {
+        var c = left.splice(randInt(left.length), 1)[0], pc = by[c.s];
+        games.push({ song: c, by: pc.tid, d: presetDiff(pc.c, ids) });
+      }
       u[base + 'pool'] = pool;
       u[base + 'games'] = games;
       u[base + 'drawAt'] = serverTimestamp();
@@ -475,6 +512,8 @@
       if (f) await set(roomRef('live/fx/' + f), /\/ms$/.test(f) ? Number(e.target.value) : e.target.value);
       var df = e.target.dataset.diff;
       if (df) await set(roomRef('live/matches/' + edit + '/games/' + df), e.target.value || null);
+      var pd = e.target.dataset.pdiff;
+      if (pd) await set(roomRef('picks/' + pd), e.target.value || null);
     } catch (err) {
       say('error', /permission/i.test(err.code + err.message) ? '권한이 없습니다. 다시 로그인하세요.' : err.message);
     }
@@ -556,7 +595,8 @@
         await set(roomRef('teams/' + tid), {
           name: d.name.trim(),
           n: t ? t.n : teamIds().reduce(function (m, x) { return Math.max(m, state.teams[x].n || 0); }, 0) + 1,
-          members: members
+          members: members,
+          lead: ids[0]
         });
         delete drafts[tid];
         return say('ok', '팀을 저장했습니다.');
