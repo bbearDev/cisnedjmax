@@ -131,7 +131,7 @@
     html += '</div><div class="row"><button type="button" data-act="nicks">닉네임 불러오기</button>' +
       '<button type="button" class="primary" data-act="save">저장</button>' +
       '<button type="button" class="danger" data-act="delete">삭제</button></div>';
-    if (saved && !(state.teams[tid].lead in (state.teams[tid].members || {}))) html += '<p class="hint">팀장이 지정되지 않았습니다. 선수 1을 팀장으로 하려면 저장을 다시 누르세요.</p>';
+    if (saved && !hasLead(tid)) html += '<p class="hint">팀장이 지정되지 않았습니다. 선수 1을 팀장으로 하려면 저장을 다시 누르세요.</p>';
     if (saved) {
       var p = state.picks[tid];
       html += '<div class="picks">';
@@ -226,13 +226,15 @@
   function randomBase() { return BASE_MIN + randInt((BASE_MAX - BASE_MIN) / BASE_STEP + 1) * BASE_STEP; }
 
   // 자선곡에 정해 둔 난이도는 곡을 넣을 때 두 팀 선수 모두에게 똑같이 적용합니다
-  // (팀장은 팀장 난이도, 팀원은 팀원 난이도를 따릅니다)
+  // (팀장은 팀장 난이도, 팀원은 팀원 난이도를 따릅니다. 팀장이 지정되지 않은 팀은 넣지 않습니다)
   function songOf(c) { return c ? { s: c.s, n: c.n } : null; }
+  function hasLead(tid) { var t = state.teams[tid] || {}; return !!t.lead && t.lead in (t.members || {}); }
   function presetDiff(c, ids) {
     if (!c || !(c.lead || c.mate)) return null;
     var d = {};
     ids.forEach(function (tid) {
       var t = state.teams[tid] || {};
+      if (!hasLead(tid)) return;
       Object.keys(t.members || {}).forEach(function (uid) {
         var v = c[uid === t.lead ? 'lead' : 'mate'];
         if (!v || !(v.btn || v.pat)) return;
@@ -372,6 +374,11 @@
     if (final) html += '<button type="button" data-act="draw">' + (m.pool.length ? '3곡 다시 추첨' : '결승 3곡 추첨') + '</button>';
     else html += '<button type="button" data-act="load">자선곡 다시 불러오기</button><button type="button" data-act="swap">판 순서 바꾸기</button>';
     html += '<button type="button" data-act="reset"' + (m.pool.length || m.games.some(function (x) { return x.song; }) ? '' : ' disabled') + '>곡 초기화</button></div>';
+    var noLead = ids.filter(function (tid) { return !hasLead(tid); });
+    if (noLead.length) {
+      html += '<p class="msg error">팀장이 지정되지 않은 팀이 있습니다: ' + noLead.map(function (tid) { return esc(teamName(tid)); }).join(', ') +
+        '. 이 팀 선수에게는 미리 정한 난이도가 들어가지 않습니다. 팀·자선곡 탭에서 선수 1(팀장)을 확인하고 저장한 뒤 ' + (final ? '3곡 다시 추첨' : '자선곡 다시 불러오기') + '을 누르세요.</p>';
+    }
     // 곡을 넣은 뒤 대진이 바뀌면 판에 이전 팀의 곡과 난이도가 남습니다
     if (m.games.some(function (x) { return x.song && x.by && ids.indexOf(x.by) < 0; })) {
       html += '<p class="msg error">곡을 넣은 뒤 대진이 바뀌었습니다. 지금 두 팀의 자선곡과 난이도로 바꾸려면 ' + (final ? '3곡 다시 추첨' : '자선곡 다시 불러오기') + '을 누르세요.</p>';
