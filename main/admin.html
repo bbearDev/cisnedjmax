@@ -370,13 +370,15 @@
 
     html += '<h2 style="margin-top:16px">' + info.name + ' — ' + esc(teamName(ids[0])) + ' vs ' + esc(teamName(ids[1])) + '</h2><div class="row">' +
       '<button type="button" class="primary" data-act="onair">트랙리스트에 띄우기</button>';
-    if (final) html += '<button type="button" data-act="draw">' + (m.pool.length ? '3곡 다시 추첨' : '결승 3곡 추첨') + '</button>';
-    else html += '<button type="button" data-act="load">자선곡 다시 불러오기</button><button type="button" data-act="swap">판 순서 바꾸기</button>';
+    var loaded = m.games.some(function (x) { return x.song; });
+    var fill = final ? (m.pool.length ? '3곡 다시 추첨' : '결승 3곡 추첨') : (loaded ? '자선곡 다시 불러오기' : '자선곡 불러오기');
+    if (final) html += '<button type="button" data-act="draw">' + fill + '</button>';
+    else html += '<button type="button" data-act="load">' + fill + '</button><button type="button" data-act="swap">판 순서 바꾸기</button>';
     html += '<button type="button" data-act="reset"' + (m.pool.length || m.games.some(function (x) { return x.song; }) ? '' : ' disabled') + '>곡 초기화</button></div>';
     var noLead = ids.filter(function (tid) { return !hasLead(tid); });
     if (noLead.length) {
       html += '<p class="msg error">팀장이 지정되지 않은 팀이 있습니다: ' + noLead.map(function (tid) { return esc(teamName(tid)); }).join(', ') +
-        '. 이 팀 선수에게는 미리 정한 난이도가 들어가지 않습니다. 팀·자선곡 탭에서 선수 1(팀장)을 확인하고 저장한 뒤 ' + (final ? '3곡 다시 추첨' : '자선곡 다시 불러오기') + '을 누르세요.</p>';
+        '. 이 팀 선수에게는 미리 정한 난이도가 들어가지 않습니다. 팀·자선곡 탭에서 선수 1(팀장)을 확인하고 저장한 뒤 ' + fill + '을 누르세요.</p>';
     }
     // 곡을 넣은 뒤 대진이 바뀌면 판에 이전 팀의 곡과 난이도가 남습니다
     if (m.games.some(function (x) { return x.song && x.by && ids.indexOf(x.by) < 0; })) {
@@ -432,11 +434,12 @@
     if (act === 'edit') { edit = b.dataset.mid; notice = ''; return render(); }
 
     var ids = derive(live).teams[edit], m = live.matches[edit];
+    // 곡은 자선곡 불러오기·결승 추첨으로만 넣습니다
     if (act === 'onair') {
+      if (!m.games.some(function (x) { return x.song; }) &&
+        !confirm('아직 곡을 넣지 않아 트랙리스트가 빈 칸으로 나갑니다. ' + (matchInfo(edit).stage === 'f' ? '결승 3곡 추첨' : '자선곡 불러오기') + ' 전에 띄울까요?')) return;
       u['live/cur'] = edit;
       u['live/scene'] = 'track';
-      // 처음 띄우는 6강·4강 경기는 자선곡을 함께 불러옵니다
-      if (matchInfo(edit).stage !== 'f' && !m.games.some(function (x) { return x.song; })) loadPicks(edit, ids, u);
       return update(roomRef(), u);
     }
     if (act === 'load') {
